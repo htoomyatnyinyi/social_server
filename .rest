@@ -1,10 +1,9 @@
 
-@@ auth = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI0YnQ0azAwMDB4aGlqcW95NnN3dWgiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3Njk4NTIzNzJ9.gwnqzOdJ-Qan5J_ri_Vup-Rqk5nHr0jAZNqEb_aESgk"
 ###
-GET http://192.168.1.144:8080
+GET http://localhost:8080
 
 ###
-POST http://192.168.1.143:8080/auth/signup
+POST http://localhost:8080/auth/signup
 Content-Type: application/json
 
 {
@@ -13,7 +12,7 @@ Content-Type: application/json
     "name": "Test User"
 }
 ###
-POST http://192.168.1.143:8080/auth/signin
+POST http://localhost:8080/auth/signin
 Content-Type: application/json
 
 {
@@ -21,7 +20,7 @@ Content-Type: application/json
     "password": "password"
 }
 ###
-POST http://192.168.1.143:8080/posts
+POST http://localhost:8080/posts
 Content-Type: application/json
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI0YnQ0azAwMDB4aGlqcW95NnN3dWgiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3Njk4NTIzNzJ9.gwnqzOdJ-Qan5J_ri_Vup-Rqk5nHr0jAZNqEb_aESgk
 
@@ -30,4 +29,4 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI0YnQ0a
 }
 
 ###
-GET http://192.168.1.143:8080/posts
+GET http://localhost:8080/posts
