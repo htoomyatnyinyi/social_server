@@ -19,8 +19,12 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     return { user };
   })
-  .get("/", async () => {
+  .get("/", async ({ query }) => {
+    const { type } = query;
+    const where = type === "private" ? { isPublic: false } : { isPublic: true };
+
     return await prisma.post.findMany({
+      where,
       include: {
         author: {
           select: { id: true, name: true, image: true },
@@ -46,7 +50,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         return { message: "Unauthorized" };
       }
 
-      const { content, image } = body;
+      const { content, image, isPublic } = body;
       let imageUrl = null;
 
       if (image) {
@@ -60,6 +64,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         data: {
           content,
           image: imageUrl,
+          isPublic: isPublic ?? true,
           authorId: user.id as string,
         },
         include: {
@@ -72,7 +77,8 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     {
       body: t.Object({
         content: t.Optional(t.String()),
-        image: t.Optional(t.String()), // Base64 or URL
+        image: t.Optional(t.String()),
+        isPublic: t.Optional(t.Boolean()),
       }),
     },
   )

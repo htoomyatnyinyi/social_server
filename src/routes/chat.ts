@@ -5,22 +5,20 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
   .ws("/ws", {
     body: t.Object({
       message: t.String(),
-      receiverId: t.String(),
+      receiverId: t.Optional(t.String()),
       senderId: t.String(),
       chatId: t.String(),
     }),
     async message(ws, { message, receiverId, senderId, chatId }) {
-      // Store message in database
       const savedMessage = await prisma.message.create({
         data: {
           content: message,
           senderId,
-          receiverId,
+          receiverId: receiverId || "", // For public chat receiverId might be empty
           chatId,
         },
       });
 
-      // Broadcast to all clients (in a real app, you'd filter by receiver)
       ws.publish(chatId, {
         ...savedMessage,
         type: "new_message",
@@ -30,9 +28,21 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       const chatId = ws.data.query.chatId;
       if (chatId) {
         ws.subscribe(chatId);
-        console.log(`User subscribed to chat: ${chatId}`);
       }
     },
+  })
+  .get("/public", async () => {
+    let publicChat = await prisma.chat.findFirst({
+      where: { isPublic: true },
+    });
+
+    if (!publicChat) {
+      publicChat = await prisma.chat.create({
+        data: { isPublic: true },
+      });
+    }
+
+    return publicChat;
   })
   .get("/rooms", async ({ query }) => {
     const { userId } = query;
@@ -40,6 +50,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
 
     return await prisma.chat.findMany({
       where: {
+        isPublic: false,
         users: {
           some: { id: userId as string },
         },
@@ -59,8 +70,24 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     "/rooms",
     async ({ body }) => {
       const { userIds } = body;
+
+      // Check if private chat already exists between these users
+      if (userIds.length === 2) {
+        const existing = await prisma.chat.findFirst({
+          where: {
+            isPublic: false,
+            AND: [
+              { users: { some: { id: userIds[0] } } },
+              { users: { some: { id: userIds[1] } } },
+            ],
+          },
+        });
+        if (existing) return existing;
+      }
+
       return await prisma.chat.create({
         data: {
+          isPublic: false,
           users: {
             connect: userIds.map((id: string) => ({ id })),
           },

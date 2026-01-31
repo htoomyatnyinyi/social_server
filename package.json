@@ -9,10 +9,12 @@
     "@elysiajs/cors": "^1.4.1",
     "@elysiajs/jwt": "^1.4.0",
     "@elysiajs/static": "^1.4.7",
+    "@prisma/adapter-mariadb": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.9.0",
-    "elysia": "latest"
+    "elysia": "latest",
+    "mariadb": "^3.4.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
