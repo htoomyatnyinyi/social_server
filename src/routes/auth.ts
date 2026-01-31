@@ -1,0 +1,103 @@
+import { Elysia, t } from "elysia";
+import { jwt } from "@elysiajs/jwt";
+import prisma from "../lib/prisma";
+import bcrypt from "bcryptjs";
+
+export const authRoutes = new Elysia({ prefix: "/auth" })
+  .use(
+    jwt({
+      name: "jwt",
+      secret: process.env.JWT_SECRET!,
+    }),
+  )
+  .post(
+    "/signup",
+    async ({ body, jwt, set }) => {
+      const { email, password, name } = body;
+
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        set.status = 400;
+        return { message: "User already exists" };
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          name,
+        },
+      });
+
+      const token = await jwt.sign({
+        id: user.id,
+        email: user.email,
+      });
+
+      return {
+        message: "User created successfully",
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+      };
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: "email" }),
+        password: t.String({ minLength: 6 }),
+        name: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    "/signin",
+    async ({ body, jwt, set }) => {
+      const { email, password } = body;
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user || !user.password) {
+        set.status = 401;
+        return { message: "Invalid credentials" };
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+
+      if (!isPasswordValid) {
+        set.status = 401;
+        return { message: "Invalid credentials" };
+      }
+
+      const token = await jwt.sign({
+        id: user.id,
+        email: user.email,
+      });
+
+      return {
+        message: "Signed in successfully",
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        },
+      };
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: "email" }),
+        password: t.String(),
+      }),
+    },
+  );
