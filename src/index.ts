@@ -28,6 +28,7 @@ import { staticPlugin } from "@elysiajs/static";
 import { authRoutes } from "./routes/auth";
 import { postRoutes } from "./routes/posts";
 import { chatRoutes } from "./routes/chat";
+import { profileRoutes } from "./routes/profile";
 
 const app = new Elysia()
   .use(cors())
@@ -37,6 +38,7 @@ const app = new Elysia()
   .use(authRoutes)
   .use(postRoutes)
   .use(chatRoutes)
+  .use(profileRoutes)
   .listen(process.env.PORT || 8080);
 
 console.log(

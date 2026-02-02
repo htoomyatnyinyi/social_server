@@ -30,13 +30,39 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           select: { id: true, name: true, image: true },
         },
         likes: true,
+        originalPost: {
+          include: {
+            author: { select: { id: true, name: true, image: true } },
+          },
+        },
         comments: {
+          where: { parentId: null },
+          include: {
+            user: { select: { id: true, name: true, image: true } },
+            replies: {
+              include: {
+                user: { select: { id: true, name: true, image: true } },
+              },
+            },
+          },
+          take: 3,
+        },
+        _count: {
+          select: { likes: true, comments: true, shares: true, reposts: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  })
+  .get("/:id/comments", async ({ params: { id } }) => {
+    return await prisma.comment.findMany({
+      where: { postId: id, parentId: null },
+      include: {
+        user: { select: { id: true, name: true, image: true } },
+        replies: {
           include: {
             user: { select: { id: true, name: true, image: true } },
           },
-        },
-        _count: {
-          select: { likes: true, comments: true, shares: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -53,11 +79,13 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       const { content, image, isPublic } = body;
       let imageUrl = null;
 
-      if (image) {
+      if (image && image.startsWith("data:image")) {
         const uploadResponse = await cloudinary.uploader.upload(image, {
           folder: "social_app/posts",
         });
         imageUrl = uploadResponse.secure_url;
+      } else if (image) {
+        imageUrl = image;
       }
 
       const post = await prisma.post.create({
@@ -82,6 +110,40 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       }),
     },
   )
+  .post("/:id/repost", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const originalPost = await prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!originalPost) {
+      set.status = 404;
+      return { message: "Original post not found" };
+    }
+
+    const repost = await prisma.post.create({
+      data: {
+        isRepost: true,
+        originalPostId: id,
+        authorId: user.id as string,
+        isPublic: true,
+      },
+      include: {
+        author: { select: { id: true, name: true, image: true } },
+        originalPost: {
+          include: {
+            author: { select: { id: true, name: true, image: true } },
+          },
+        },
+      },
+    });
+
+    return repost;
+  })
   .post("/:id/like", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
@@ -123,13 +185,14 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         return { message: "Unauthorized" };
       }
 
-      const { content } = body;
+      const { content, parentId } = body;
 
       const comment = await prisma.comment.create({
         data: {
           content,
           userId: user.id as string,
           postId: id,
+          parentId: parentId || null,
         },
         include: {
           user: { select: { id: true, name: true, image: true } },
@@ -141,6 +204,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     {
       body: t.Object({
         content: t.String(),
+        parentId: t.Optional(t.String()),
       }),
     },
   );
