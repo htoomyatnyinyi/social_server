@@ -22,10 +22,10 @@ Content-Type: application/json
 ###
 POST http://localhost:8080/posts
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI0YnQ0azAwMDB4aGlqcW95NnN3dWgiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3Njk4NTIzNzJ9.gwnqzOdJ-Qan5J_ri_Vup-Rqk5nHr0jAZNqEb_aESgk
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI2cnRkbDAwMDAyOHA5MjNlczU2YnciLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3Njk4NTk3NDR9.bCtqH7lLHKwy-tlPeGkk_OWsPemYvfFsXwsqZtmcSaY
 
 {
-    "content": "Hello World"
+    "content": "Hello "
 }
 
 ###

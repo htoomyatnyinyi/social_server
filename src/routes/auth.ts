@@ -100,4 +100,22 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         password: t.String(),
       }),
     },
-  );
+  )
+  .get("/users", async ({ query }) => {
+    const { search } = query;
+    return await prisma.user.findMany({
+      where: {
+        OR: [
+          { name: { contains: search as string } },
+          { email: { contains: search as string } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        image: true,
+      },
+      take: 10,
+    });
+  });

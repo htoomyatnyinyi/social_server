@@ -84,8 +84,9 @@ model Message {
   content    String   @db.Text
   senderId   String
   sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiverId String
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  receiverId String?
+  receiver   User?    @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
   chatId     String
   chat       Chat     @relation(fields: [chatId], references: [id])
   createdAt  DateTime @default(now())

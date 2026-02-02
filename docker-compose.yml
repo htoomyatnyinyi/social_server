@@ -1,8 +1,56 @@
+# # version: "3.9"
+
+# services:
+#   db:
+#     image: mysql:latest
+#     restart: always
+#     environment:
+#       MYSQL_ROOT_PASSWORD: root_password
+#       MYSQL_DATABASE: social_db
+#       MYSQL_USER: oasis
+#       MYSQL_PASSWORD: oasis_password
+#     ports:
+#       - "3306:3306"
+#     volumes:
+#       - mysql_data:/var/lib/mysql
+#     healthcheck:
+#       test:
+#         [
+#           "CMD",
+#           "mysqladmin",
+#           "ping",
+#           "-h",
+#           "localhost",
+#           "-u",
+#           "oasis",
+#           "-poasis_password",
+#         ]
+
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   api:
+#     build: .
+#     ports:
+#       - "8080:8080"
+#     env_file:
+#       - .env
+#     environment:
+#       DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+#       PORT: 8080
+#     depends_on:
+#       db:
+#         condition: service_healthy
+
+# volumes:
+#   mysql_data:
+
 # version: "3.9"
 
 services:
   db:
-    image: mysql:latest
+    image: mysql:latest # Specifying a version is safer than 'latest'
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root_password
@@ -23,7 +71,7 @@ services:
           "localhost",
           "-u",
           "oasis",
-          "-p oasis_password",
+          "-poasis_password",
         ]
       interval: 10s
       timeout: 5s
@@ -31,6 +79,7 @@ services:
 
   api:
     build: .
+    restart: always
     ports:
       - "8080:8080"
     env_file:

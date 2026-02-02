@@ -3,3 +3,10 @@ bun.lockb
 .git
 .env
 dist
+
+
+node_modules
+bun.lockb
+.git
+.env
+dist
