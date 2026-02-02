@@ -1,0 +1,45 @@
+
+###
+GET http://localhost:8080
+
+###
+POST http://localhost:8080/auth/signup
+Content-Type: application/json
+
+{
+    "email": "test@example.com",
+    "password": "password",
+    "name": "Test User"
+}
+
+
+###
+{
+    "email": "test@example.com",
+    "password": "password",
+    "name": "Test User"
+}
+###
+POST http://localhost:8080/auth/signin
+Content-Type: application/json
+
+{
+    "email": "test@example.com",
+    "password": "password"
+}
+###
+POST http://localhost:8080/posts
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI2cnRkbDAwMDAyOHA5MjNlczU2YnciLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3Njk4NTk3NDR9.bCtqH7lLHKwy-tlPeGkk_OWsPemYvfFsXwsqZtmcSaY
+
+{
+    "content": "Hello "
+}
+###
+# DATABASE_URL="mysql://oasis:oasis_password@localhost:3306/social_db" bunx prisma db push
+###
+GET http://localhost:8080/posts
+
+
+###
+GET http://localhost:8080/comments

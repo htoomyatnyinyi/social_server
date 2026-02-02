@@ -1,11 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -15,6 +9,7 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
+  username      String?   @unique
   password      String?
   name          String?
   image         String?
@@ -27,19 +22,73 @@ model User {
   sentMessages  Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
   chats         Chat[]
+  
+  followers     Follow[]  @relation("Following")
+  following     Follow[]  @relation("Followers")
+  
+  notifications Notification[] @relation("Recipient")
+  actions       Notification[] @relation("Issuer")
+  
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  type        NotificationType
+  recipientId String
+  recipient   User             @relation("Recipient", fields: [recipientId], references: [id])
+  issuerId    String
+  issuer      User             @relation("Issuer", fields: [issuerId], references: [id])
+  
+  postId      String?
+  post        Post?            @relation(fields: [postId], references: [id])
+  commentId   String?
+  comment     Comment?         @relation(fields: [commentId], references: [id])
+  
+  read        Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+  REPOST
+  REPLY
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("Followers", fields: [followerId], references: [id])
+  followingId String
+  following   User     @relation("Following", fields: [followingId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
 }
 
 model Post {
   id        String    @id @default(cuid())
   content   String?   @db.Text
   image     String?
+  isPublic  Boolean   @default(true)
   authorId  String
   author    User      @relation(fields: [authorId], references: [id])
   likes     Like[]
   comments  Comment[]
   shares    Share[]
+  
+  isRepost    Boolean   @default(false)
+  originalPostId String?
+  originalPost   Post?     @relation("Reposts", fields: [originalPostId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  reposts        Post[]    @relation("Reposts")
+  
+  notifications  Notification[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -62,6 +111,13 @@ model Comment {
   user      User     @relation(fields: [userId], references: [id])
   postId    String
   post      Post     @relation(fields: [postId], references: [id])
+  
+  parentId  String?
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  replies   Comment[] @relation("CommentReplies")
+  
+  notifications Notification[]
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -77,6 +133,7 @@ model Share {
 
 model Chat {
   id        String    @id @default(cuid())
+  isPublic  Boolean   @default(false)
   users     User[]
   messages  Message[]
   createdAt DateTime  @default(now())
@@ -88,8 +145,9 @@ model Message {
   content    String   @db.Text
   senderId   String
   sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiverId String
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  receiverId String?
+  receiver   User?    @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
   chatId     String
   chat       Chat     @relation(fields: [chatId], references: [id])
   createdAt  DateTime @default(now())

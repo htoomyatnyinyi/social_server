@@ -13,15 +13,17 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   .post(
     "/signup",
     async ({ body, jwt, set }) => {
-      const { email, password, name } = body;
+      const { email, password, name, username } = body;
 
-      const existingUser = await prisma.user.findUnique({
-        where: { email },
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [{ email }, { username }],
+        },
       });
 
       if (existingUser) {
         set.status = 400;
-        return { message: "User already exists" };
+        return { message: "Email or Username already exists" };
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -29,6 +31,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       const user = await prisma.user.create({
         data: {
           email,
+          username,
           password: hashedPassword,
           name,
         },
@@ -45,6 +48,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         user: {
           id: user.id,
           email: user.email,
+          username: user.username,
           name: user.name,
         },
       };
@@ -53,6 +57,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       body: t.Object({
         email: t.String({ format: "email" }),
         password: t.String({ minLength: 6 }),
+        username: t.String({ minLength: 3 }),
         name: t.Optional(t.String()),
       }),
     },
@@ -89,6 +94,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         user: {
           id: user.id,
           email: user.email,
+          username: user.username,
           name: user.name,
           image: user.image,
         },
@@ -100,4 +106,24 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         password: t.String(),
       }),
     },
-  );
+  )
+  .get("/users", async ({ query }) => {
+    const { search } = query;
+    return await prisma.user.findMany({
+      where: {
+        OR: [
+          { name: { contains: search as string } },
+          { username: { contains: search as string } },
+          { email: { contains: search as string } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        image: true,
+      },
+      take: 10,
+    });
+  });
