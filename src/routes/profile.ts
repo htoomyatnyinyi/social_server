@@ -64,8 +64,22 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         return { message: "Unauthorized" };
       }
 
-      const { name, bio, image } = body;
+      const { name, bio, image, username } = body;
       let imageUrl = image;
+
+      if (username) {
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            username,
+            NOT: { id: user.id as string },
+          },
+        });
+
+        if (existingUser) {
+          set.status = 400;
+          return { message: "Username already taken" };
+        }
+      }
 
       if (image && image.startsWith("data:image")) {
         const uploadResponse = await cloudinary.uploader.upload(image, {
@@ -79,6 +93,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         data: {
           name,
           bio,
+          username,
           image: imageUrl,
         },
       });
@@ -90,6 +105,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         name: t.Optional(t.String()),
         bio: t.Optional(t.String()),
         image: t.Optional(t.String()),
+        username: t.Optional(t.String()),
       }),
     },
   )
