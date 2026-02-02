@@ -142,6 +142,17 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       },
     });
 
+    if (originalPost.authorId !== (user.id as string)) {
+      await prisma.notification.create({
+        data: {
+          type: "REPOST",
+          recipientId: originalPost.authorId,
+          issuerId: user.id as string,
+          postId: originalPost.id,
+        },
+      });
+    }
+
     return repost;
   })
   .post("/:id/like", async ({ params: { id }, user, set }) => {
@@ -175,6 +186,22 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       },
     });
 
+    const post = await prisma.post.findUnique({
+      where: { id },
+      select: { authorId: true },
+    });
+
+    if (post && post.authorId !== userId) {
+      await prisma.notification.create({
+        data: {
+          type: "LIKE",
+          recipientId: post.authorId,
+          issuerId: userId,
+          postId: id,
+        },
+      });
+    }
+
     return { message: "Liked" };
   })
   .post(
@@ -196,8 +223,38 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         },
         include: {
           user: { select: { id: true, name: true, image: true } },
+          post: { select: { authorId: true } },
+          parent: { select: { userId: true } },
         },
       });
+
+      const currentUserId = user.id as string;
+
+      // Notify post author
+      if (comment.post.authorId !== currentUserId) {
+        await prisma.notification.create({
+          data: {
+            type: "COMMENT",
+            recipientId: comment.post.authorId,
+            issuerId: currentUserId,
+            postId: id,
+            commentId: comment.id,
+          },
+        });
+      }
+
+      // Notify parent comment author if it's a reply
+      if (comment.parent && comment.parent.userId !== currentUserId) {
+        await prisma.notification.create({
+          data: {
+            type: "REPLY",
+            recipientId: comment.parent.userId,
+            issuerId: currentUserId,
+            postId: id,
+            commentId: comment.id,
+          },
+        });
+      }
 
       return comment;
     },

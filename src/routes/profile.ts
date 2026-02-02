@@ -129,6 +129,14 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
     });
 
+    await prisma.notification.create({
+      data: {
+        type: "FOLLOW",
+        recipientId: followingId,
+        issuerId: followerId,
+      },
+    });
+
     return { message: "Followed" };
   })
   .get("/:id/followers", async ({ params: { id } }) => {
