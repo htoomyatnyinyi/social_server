@@ -107,7 +107,7 @@
 
 #   # ... (keep your db and api services as they are)
 
-version: "3.9"
+# version: "3.9"
 
 services:
   db:
@@ -153,22 +153,37 @@ services:
         condition: service_healthy
 
   studio:
-    build: .
-    # Added --browser none to stop it trying to open a browser inside the container
-    command: bunx prisma studio --port 5555 --hostname 0.0.0.0
+    image: node:20 # or whatever image you're using
+    working_dir: /app
+    volumes:
+      - .:/app
     ports:
-      - "5555:5555"
-    environment:
-      DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+      - "5555:5555" # map the port so you can access from host
+    # command: npx prisma studio --port 5555
+    # or just:
+    command: npx prisma studio --port 5555 --browser none # ← this is the key fix
+    # command: npx prisma studio
     depends_on:
-      db:
-        condition: service_healthy
+      - db
+    environment:
+      - DATABASE_URL=mysql://oasis:oasis_password@db:3306/social_db
+  # studio:
+  #   build: .
+  #   # Added --browser none to stop it trying to open a browser inside the container
+  #   command: bunx prisma studio --port 5555 --hostname 0.0.0.0
+  #   ports:
+  #     - "5555:5555"
+  #   environment:
+  #     DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
 
   adminer:
     image: adminer
     restart: always
     ports:
-      - "8081:8080"
+      - "9091:8080"
 
 volumes:
   mysql_data:
