@@ -133,3 +133,5 @@ COPY . .
 EXPOSE 8080
 
 CMD ["sh", "-c", "bunx prisma db push && bun run src/index.ts"]
+
+# CMD ["sh", "-c", "bunx prisma migrate deploy && bun run src/index.ts"]
