@@ -1,8 +1,117 @@
-version: "3.8"
+# # # version: "3.9"
+
+# # services:
+# #   db:
+# #     image: mysql:latest
+# #     restart: always
+# #     environment:
+# #       MYSQL_ROOT_PASSWORD: root_password
+# #       MYSQL_DATABASE: social_db
+# #       MYSQL_USER: oasis
+# #       MYSQL_PASSWORD: oasis_password
+# #     ports:
+# #       - "3306:3306"
+# #     volumes:
+# #       - mysql_data:/var/lib/mysql
+# #     healthcheck:
+# #       test:
+# #         [
+# #           "CMD",
+# #           "mysqladmin",
+# #           "ping",
+# #           "-h",
+# #           "localhost",
+# #           "-u",
+# #           "oasis",
+# #           "-poasis_password",
+# #         ]
+
+# #       interval: 10s
+# #       timeout: 5s
+# #       retries: 5
+
+# #   api:
+# #     build: .
+# #     ports:
+# #       - "8080:8080"
+# #     env_file:
+# #       - .env
+# #     environment:
+# #       DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+# #       PORT: 8080
+# #     depends_on:
+# #       db:
+# #         condition: service_healthy
+
+# # volumes:
+# #   mysql_data:
+
+# # version: "3.9"
+
+# services:
+#   db:
+#     image: mysql:latest # Specifying a version is safer than 'latest'
+#     restart: always
+#     environment:
+#       MYSQL_ROOT_PASSWORD: root_password
+#       MYSQL_DATABASE: social_db
+#       MYSQL_USER: oasis
+#       MYSQL_PASSWORD: oasis_password
+#     ports:
+#       - "3306:3306"
+#     volumes:
+#       - mysql_data:/var/lib/mysql
+#     healthcheck:
+#       test:
+#         [
+#           "CMD",
+#           "mysqladmin",
+#           "ping",
+#           "-h",
+#           "localhost",
+#           "-u",
+#           "oasis",
+#           "-poasis_password",
+#         ]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   api:
+#     build: .
+#     restart: always
+#     ports:
+#       - "8080:8080"
+#     env_file:
+#       - .env
+#     environment:
+#       DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+#       PORT: 8080
+#     depends_on:
+#       db:
+#         condition: service_healthy
+
+#   studio:
+#     build: .
+#     command: bunx prisma studio
+#     ports:
+#       - "5555:5555"
+#     environment:
+#       DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+#     depends_on:
+#       db:
+#         condition: service_healthy
+
+# volumes:
+#   mysql_data:
+
+#   # ... (keep your db and api services as they are)
+
+# version: "3.9"
 
 services:
   db:
-    image: mysql:8.0
+    image: mysql:latest # Specific version is better than latest
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root_password
@@ -13,6 +122,68 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "oasis",
+          "-poasis_password",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+      PORT: 8080
+    depends_on:
+      db:
+        condition: service_healthy
+
+  studio:
+    image: node:20 # or whatever image you're using
+    working_dir: /app
+    volumes:
+      - .:/app
+    ports:
+      - "5555:5555" # map the port so you can access from host
+    # command: npx prisma studio --port 5555
+    # or just:
+    command: npx prisma studio --port 5555 --browser none # ← this is the key fix
+    # command: npx prisma studio
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=mysql://oasis:oasis_password@db:3306/social_db
+  # studio:
+  #   build: .
+  #   # Added --browser none to stop it trying to open a browser inside the container
+  #   command: bunx prisma studio --port 5555 --hostname 0.0.0.0
+  #   ports:
+  #     - "5555:5555"
+  #   environment:
+  #     DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "9091:8080"
 
 volumes:
   mysql_data:
