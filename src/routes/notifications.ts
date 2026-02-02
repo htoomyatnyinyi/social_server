@@ -29,7 +29,7 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
     return await prisma.notification.findMany({
       where: { recipientId: userId },
       include: {
-        issuer: { select: { id: true, name: true, image: true } },
+        issuer: { select: { id: true, name: true, username: true, image: true } },
         post: { select: { id: true, content: true, image: true } },
         comment: { select: { id: true, content: true } },
       },

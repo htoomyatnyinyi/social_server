@@ -19,6 +19,27 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     return { user };
   })
+  .get("/:id", async ({ params: { id } }) => {
+    return await prisma.post.findUnique({
+      where: { id },
+      include: {
+        author: {
+          select: { id: true, name: true, username: true, image: true },
+        },
+        likes: true,
+        originalPost: {
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+          },
+        },
+        _count: {
+          select: { likes: true, comments: true, shares: true, reposts: true },
+        },
+      },
+    });
+  })
   .get("/", async ({ query }) => {
     const { type } = query;
     const where = type === "private" ? { isPublic: false } : { isPublic: true };
@@ -27,21 +48,25 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       where,
       include: {
         author: {
-          select: { id: true, name: true, image: true },
+          select: { id: true, name: true, username: true, image: true },
         },
         likes: true,
         originalPost: {
           include: {
-            author: { select: { id: true, name: true, image: true } },
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
           },
         },
         comments: {
           where: { parentId: null },
           include: {
-            user: { select: { id: true, name: true, image: true } },
+            user: { select: { id: true, name: true, username: true, image: true } },
             replies: {
               include: {
-                user: { select: { id: true, name: true, image: true } },
+                user: {
+                  select: { id: true, name: true, username: true, image: true },
+                },
               },
             },
           },
@@ -58,10 +83,10 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     return await prisma.comment.findMany({
       where: { postId: id, parentId: null },
       include: {
-        user: { select: { id: true, name: true, image: true } },
+        user: { select: { id: true, name: true, username: true, image: true } },
         replies: {
           include: {
-            user: { select: { id: true, name: true, image: true } },
+            user: { select: { id: true, name: true, username: true, image: true } },
           },
         },
       },
@@ -96,7 +121,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           authorId: user.id as string,
         },
         include: {
-          author: { select: { id: true, name: true, image: true } },
+          author: {
+            select: { id: true, name: true, username: true, image: true },
+          },
         },
       });
 
@@ -133,10 +160,14 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         isPublic: true,
       },
       include: {
-        author: { select: { id: true, name: true, image: true } },
+        author: {
+          select: { id: true, name: true, username: true, image: true },
+        },
         originalPost: {
           include: {
-            author: { select: { id: true, name: true, image: true } },
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
           },
         },
       },
@@ -222,7 +253,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           parentId: parentId || null,
         },
         include: {
-          user: { select: { id: true, name: true, image: true } },
+          user: { select: { id: true, name: true, username: true, image: true } },
           post: { select: { authorId: true } },
           parent: { select: { userId: true } },
         },

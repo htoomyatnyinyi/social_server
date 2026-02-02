@@ -90,7 +90,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
           },
           include: {
             sender: {
-              select: { id: true, name: true, image: true },
+              select: { id: true, name: true, username: true, image: true },
             },
           },
         });
@@ -139,7 +139,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       },
       include: {
         users: {
-          select: { id: true, name: true, image: true },
+          select: { id: true, name: true, username: true, image: true },
         },
         messages: {
           take: 1,
@@ -196,7 +196,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         },
         include: {
           users: {
-            select: { id: true, name: true, image: true },
+            select: { id: true, name: true, username: true, image: true },
           },
         },
       });
@@ -212,7 +212,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         },
         include: {
           users: {
-            select: { id: true, name: true, image: true },
+            select: { id: true, name: true, username: true, image: true },
           },
         },
       });
@@ -234,7 +234,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       orderBy: { createdAt: "asc" },
       include: {
         sender: {
-          select: { id: true, name: true, image: true },
+          select: { id: true, name: true, username: true, image: true },
         },
       },
     });

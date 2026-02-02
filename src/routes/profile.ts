@@ -25,6 +25,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       select: {
         id: true,
         name: true,
+        username: true,
         email: true,
         image: true,
         bio: true,
@@ -144,7 +145,13 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       where: { followingId: id },
       include: {
         follower: {
-          select: { id: true, name: true, image: true, bio: true },
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            image: true,
+            bio: true,
+          },
         },
       },
     });
@@ -155,9 +162,50 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       where: { followerId: id },
       include: {
         following: {
-          select: { id: true, name: true, image: true, bio: true },
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            image: true,
+            bio: true,
+          },
         },
       },
     });
     return following.map((f) => f.following);
+  })
+  .get("/:id/posts", async ({ params: { id } }) => {
+    return await prisma.post.findMany({
+      where: { authorId: id },
+      include: {
+        author: {
+          select: { id: true, name: true, username: true, image: true },
+        },
+        likes: true,
+        _count: {
+          select: { likes: true, comments: true, reposts: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  })
+  .get("/:id/likes", async ({ params: { id } }) => {
+    const likes = await prisma.like.findMany({
+      where: { userId: id },
+      include: {
+        post: {
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+            likes: true,
+            _count: {
+              select: { likes: true, comments: true, reposts: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    return likes.map((l) => l.post);
   });
