@@ -9,6 +9,15 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       secret: process.env.JWT_SECRET!,
     }),
   )
+  .derive(async ({ jwt, headers }) => {
+    const auth = headers["authorization"];
+    if (!auth || !auth.startsWith("Bearer ")) return { user: null };
+
+    const token = auth.split(" ")[1];
+    const user = await jwt.verify(token);
+
+    return { user };
+  })
   .ws("/ws", {
     query: t.Object({
       chatId: t.String(),
@@ -75,7 +84,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         const savedMessage = await prisma.message.create({
           data: {
             content: message,
-            senderId: finalSenderId,
+            senderId: finalSenderId as string,
             receiverId: receiverId || null,
             chatId,
           },
@@ -113,15 +122,19 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
 
     return publicChat;
   })
-  .get("/rooms", async ({ query }) => {
-    const { userId } = query;
-    if (!userId) return [];
+  .get("/rooms", async ({ user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
 
     return await prisma.chat.findMany({
       where: {
         isPublic: false,
         users: {
-          some: { id: userId as string },
+          some: { id: userId },
         },
       },
       include: {
@@ -131,44 +144,91 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         messages: {
           take: 1,
           orderBy: { createdAt: "desc" },
+          include: {
+            sender: { select: { id: true, name: true } },
+          },
         },
       },
+      orderBy: { updatedAt: "desc" },
     });
   })
   .post(
     "/rooms",
-    async ({ body }) => {
-      const { userIds } = body;
-
-      if (userIds.length === 2) {
-        const existing = await prisma.chat.findFirst({
-          where: {
-            isPublic: false,
-            AND: [
-              { users: { some: { id: userIds[0] } } },
-              { users: { some: { id: userIds[1] } } },
-            ],
-          },
-        });
-        if (existing) return existing;
+    async ({ body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
       }
+
+      const { targetUserId } = body;
+      const currentUserId = user.id as string;
+
+      if (currentUserId === targetUserId) {
+        set.status = 400;
+        return { message: "Cannot create chat with yourself" };
+      }
+
+      // Check if they are following each other (optional requirement from user)
+      const follow = await prisma.follow.findFirst({
+        where: {
+          OR: [
+            { followerId: currentUserId, followingId: targetUserId },
+            { followerId: targetUserId, followingId: currentUserId },
+          ],
+        },
+      });
+
+      if (!follow) {
+        set.status = 403;
+        return {
+          message: "You must follow each other to start a private chat",
+        };
+      }
+
+      // Find existing private chat between these two users
+      const existing = await prisma.chat.findFirst({
+        where: {
+          isPublic: false,
+          AND: [
+            { users: { some: { id: currentUserId } } },
+            { users: { some: { id: targetUserId } } },
+          ],
+        },
+        include: {
+          users: {
+            select: { id: true, name: true, image: true },
+          },
+        },
+      });
+
+      if (existing) return existing;
 
       return await prisma.chat.create({
         data: {
           isPublic: false,
           users: {
-            connect: userIds.map((id: string) => ({ id })),
+            connect: [{ id: currentUserId }, { id: targetUserId }],
+          },
+        },
+        include: {
+          users: {
+            select: { id: true, name: true, image: true },
           },
         },
       });
     },
     {
       body: t.Object({
-        userIds: t.Array(t.String()),
+        targetUserId: t.String(),
       }),
     },
   )
-  .get("/messages/:chatId", async ({ params }) => {
+  .get("/messages/:chatId", async ({ params, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
     return await prisma.message.findMany({
       where: { chatId: params.chatId },
       orderBy: { createdAt: "asc" },
