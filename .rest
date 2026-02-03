@@ -36,7 +36,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI2cnRkb
     "content": "Hello "
 }
 ###
-# DATABASE_URL="mysql://oasis:oasis_password@localhost:3306/social_db" bunx prisma db push
+# docker compose exec api bunx prisma generate###
 ###
 GET http://localhost:8080/posts
 
