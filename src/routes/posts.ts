@@ -260,6 +260,24 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     return { message: "Liked" };
   })
+  .post("/:id/view", async ({ params: { id }, set }) => {
+    // Increment view count for a post
+    try {
+      await prisma.post.update({
+        where: { id },
+        data: {
+          views: {
+            increment: 1,
+          },
+        },
+      });
+
+      return { message: "View count incremented" };
+    } catch (error) {
+      set.status = 404;
+      return { message: "Post not found" };
+    }
+  })
   .delete("/:id", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
