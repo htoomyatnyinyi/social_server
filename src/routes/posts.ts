@@ -61,7 +61,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         comments: {
           where: { parentId: null },
           include: {
-            user: { select: { id: true, name: true, username: true, image: true } },
+            user: {
+              select: { id: true, name: true, username: true, image: true },
+            },
             replies: {
               include: {
                 user: {
@@ -86,7 +88,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         user: { select: { id: true, name: true, username: true, image: true } },
         replies: {
           include: {
-            user: { select: { id: true, name: true, username: true, image: true } },
+            user: {
+              select: { id: true, name: true, username: true, image: true },
+            },
           },
         },
       },
@@ -235,6 +239,32 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     return { message: "Liked" };
   })
+  .delete("/:id", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const post = await prisma.post.findUnique({
+      where: { id },
+    });
+
+    if (!post) {
+      set.status = 404;
+      return { message: "Post not found" };
+    }
+
+    if (post.authorId !== (user.id as string)) {
+      set.status = 403;
+      return { message: "Forbidden" };
+    }
+
+    await prisma.post.delete({
+      where: { id },
+    });
+
+    return { message: "top post deleted" };
+  })
   .post(
     "/:id/comment",
     async ({ params: { id }, body, user, set }) => {
@@ -253,7 +283,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           parentId: parentId || null,
         },
         include: {
-          user: { select: { id: true, name: true, username: true, image: true } },
+          user: {
+            select: { id: true, name: true, username: true, image: true },
+          },
           post: { select: { authorId: true } },
           parent: { select: { userId: true } },
         },

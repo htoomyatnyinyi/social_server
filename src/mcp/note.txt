@@ -1,0 +1,108 @@
+To implement an AI agent that responds to `@mentions` (like `@grok` on X) using **Elysia** and **MCP**, you should organize your project to separate the "Social App" logic from the "AI Tool" logic.
+
+Since you are using Elysia, a **feature-based** structure is the cleanest way to handle both the API routes and the MCP protocol.
+
+### 1. Recommended File Structure
+
+```text
+social_server/
+├── src/
+│   ├── index.ts           # Main entry point (starts Elysia server)
+│   ├── mcp/               # MCP Protocol Layer
+│   │   ├── server.ts      # MCP Server definition (tools/resources)
+│   │   ├── tools/         # Individual tool functions
+│   │   │   ├── posts.ts   # Tools like 'create_reply'
+│   │   │   └── users.ts   # Tools like 'get_profile'
+│   │   └── prompts/       # Templates for AI personality
+│   ├── modules/           # Social App Business Logic
+│   │   ├── posts/
+│   │   │   ├── controller.ts # HTTP Routes (e.g., POST /posts)
+│   │   │   └── service.ts    # DB logic for posts
+│   │   └── ai/
+│   │       └── agent.ts      # Logic to trigger AI when @tagged
+│   ├── db/                # Database connection (Prisma/Drizzle)
+│   └── types/             # Shared TypeScript types
+├── package.json
+└── tsconfig.json
+
+```
+
+---
+
+### 2. Implementation Logic
+
+#### Step 1: The MCP Tool (`src/mcp/tools/posts.ts`)
+
+This allows the AI to "act" on your platform. When the AI is triggered by a mention, it will call this tool to post its response.
+
+```typescript
+import { t } from "elysia";
+import { postService } from "../../modules/posts/service";
+
+export const postReplyTool = {
+  name: "post_reply",
+  schema: {
+    parentPostId: t.String(),
+    content: t.String(),
+  },
+  execute: async ({ parentPostId, content }) => {
+    const reply = await postService.createReply(parentPostId, content, "AI_AGENT_ID");
+    return {
+      content: [{ type: "text", text: `Replied with post ID: ${reply.id}` }]
+    };
+  }
+};
+
+```
+
+#### Step 2: The Mention Detector (`src/modules/posts/controller.ts`)
+
+This is where the "X-like" behavior lives. Every time a user makes a post, you check for the `@agent` tag.
+
+```typescript
+import { Elysia } from "elysia";
+import { aiAgent } from "../ai/agent";
+
+export const postController = new Elysia({ prefix: "/posts" })
+  .post("/", async ({ body }) => {
+    const newPost = await postService.create(body);
+
+    // If the post mentions @ai, trigger the background agent
+    if (newPost.content.includes("@ai")) {
+      // Don't 'await' this so the user gets a fast response
+      aiAgent.handleMention(newPost); 
+    }
+
+    return newPost;
+  });
+
+```
+
+#### Step 3: The Agent Logic (`src/modules/ai/agent.ts`)
+
+The agent acts as the **MCP Client**. It takes the user's post, talks to an LLM (like Claude or GPT), and provides the MCP tools so the LLM can reply.
+
+```typescript
+export const aiAgent = {
+  async handleMention(post: any) {
+    // 1. Send post to LLM
+    // 2. Provide the 'post_reply' tool from your MCP server
+    // 3. The LLM decides to call 'post_reply'
+    // 4. The reply appears on your social app!
+  }
+};
+
+```
+
+### 3. Why this works
+
+* **Decoupled:** Your social app doesn't need to know *how* the AI thinks; it just emits an event.
+* **Scalable:** If you want to add a "Moderator AI" later, you just add a new MCP tool like `delete_post` in the `src/mcp/tools/` folder.
+* **Real-time:** Using Elysia with Bun allows you to handle these mentions in background "fire-and-forget" tasks so the UI doesn't lag.
+
+**Would you like me to provide the specific code for the `aiAgent.ts` file to show how it connects to an LLM provider?**
+
+---
+
+[Learn more about MCP Server structures in TypeScript](https://www.youtube.com/watch?v=kXuRJXEzrE0)
+This video provides a deep dive into building an MCP server from scratch using TypeScript, which is the foundation for the structure described above.
