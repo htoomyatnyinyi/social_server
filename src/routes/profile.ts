@@ -8,6 +8,11 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
     jwt({
       name: "jwt",
       secret: process.env.JWT_SECRET!,
+      // schema: t.Object({
+      //   id: t.String(),
+      //   username: t.String(),
+      //   email: t.String(),
+      // }),
     }),
   )
   .derive(async ({ jwt, headers }) => {
@@ -64,8 +69,22 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         return { message: "Unauthorized" };
       }
 
-      const { name, bio, image } = body;
+      const { name, bio, image, username } = body;
       let imageUrl = image;
+
+      if (username) {
+        const existingUser = await prisma.user.findFirst({
+          where: {
+            username,
+            NOT: { id: user.id as string },
+          },
+        });
+
+        if (existingUser) {
+          set.status = 400;
+          return { message: "Username already taken" };
+        }
+      }
 
       if (image && image.startsWith("data:image")) {
         const uploadResponse = await cloudinary.uploader.upload(image, {
@@ -79,6 +98,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         data: {
           name,
           bio,
+          username,
           image: imageUrl,
         },
       });
@@ -90,6 +110,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         name: t.Optional(t.String()),
         bio: t.Optional(t.String()),
         image: t.Optional(t.String()),
+        username: t.Optional(t.String()),
       }),
     },
   )
@@ -155,6 +176,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       },
     });
+    // return followers.map((f) => f.followerId);
     return followers.map((f) => f.follower);
   })
   .get("/:id/following", async ({ params: { id } }) => {
@@ -172,6 +194,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       },
     });
+    // return following.map((f) => f.followingId);
     return following.map((f) => f.following);
   })
   .get("/:id/posts", async ({ params: { id } }) => {
@@ -207,5 +230,6 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
       orderBy: { createdAt: "desc" },
     });
+    // return likes.map((l) => l.postId);
     return likes.map((l) => l.post);
   });
