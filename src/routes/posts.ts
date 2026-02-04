@@ -141,55 +141,76 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       }),
     },
   )
-  .post("/:id/repost", async ({ params: { id }, user, set }) => {
-    if (!user) {
-      set.status = 401;
-      return { message: "Unauthorized" };
-    }
+  .post(
+    "/:id/repost",
+    async ({ params: { id }, body, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
 
-    const originalPost = await prisma.post.findUnique({
-      where: { id },
-    });
+      const { content, image } = body;
 
-    if (!originalPost) {
-      set.status = 404;
-      return { message: "Original post not found" };
-    }
+      const originalPost = await prisma.post.findUnique({
+        where: { id },
+      });
 
-    const repost = await prisma.post.create({
-      data: {
-        isRepost: true,
-        originalPostId: id,
-        authorId: user.id as string,
-        isPublic: true,
-      },
-      include: {
-        author: {
-          select: { id: true, name: true, username: true, image: true },
+      if (!originalPost) {
+        set.status = 404;
+        return { message: "Original post not found" };
+      }
+
+      let imageUrl = null;
+      if (image && image.startsWith("data:image")) {
+        const uploadResponse = await cloudinary.uploader.upload(image, {
+          folder: "social_app/posts",
+        });
+        imageUrl = uploadResponse.secure_url;
+      }
+
+      const repost = await prisma.post.create({
+        data: {
+          content: content || undefined,
+          image: imageUrl || undefined,
+          isRepost: true, // It is still technically a repost/quote
+          originalPostId: id,
+          authorId: user.id as string,
+          isPublic: true,
         },
-        originalPost: {
-          include: {
-            author: {
-              select: { id: true, name: true, username: true, image: true },
+        include: {
+          author: {
+            select: { id: true, name: true, username: true, image: true },
+          },
+          originalPost: {
+            include: {
+              author: {
+                select: { id: true, name: true, username: true, image: true },
+              },
             },
           },
         },
-      },
-    });
-
-    if (originalPost.authorId !== (user.id as string)) {
-      await prisma.notification.create({
-        data: {
-          type: "REPOST",
-          recipientId: originalPost.authorId,
-          issuerId: user.id as string,
-          postId: originalPost.id,
-        },
       });
-    }
 
-    return repost;
-  })
+      if (originalPost.authorId !== (user.id as string)) {
+        await prisma.notification.create({
+          data: {
+            type: content ? "QUOTE" : "REPOST", // Differentiate for notification if needed, or just REPOST
+            recipientId: originalPost.authorId,
+            issuerId: user.id as string,
+            postId: originalPost.id, // Notification links to original post
+          },
+        });
+      }
+
+      return repost;
+    },
+    {
+      body: t.Object({
+        content: t.Optional(t.String()),
+        image: t.Optional(t.String()),
+      }),
+    },
+  )
   .post("/:id/like", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
