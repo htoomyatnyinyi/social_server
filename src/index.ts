@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { staticPlugin } from "@elysiajs/static";
-// DELETE THIS: import { websocket } from "@elysiajs/websocket";
+// import { websocket } from "@elysiajs/websocket";
 import { authRoutes } from "./routes/auth";
 import { postRoutes } from "./routes/posts";
 import { chatRoutes } from "./routes/chat";
@@ -12,7 +12,7 @@ import { settingsRoutes } from "./routes/settings";
 const app = new Elysia()
   .use(cors())
   .use(staticPlugin())
-  // DELETE THIS: .use(websocket())
+  // .use(websocket())
   .get("/status", () => ({ message: "SOCIAL_APP_SERVER IS RUNNING" }))
   .use(authRoutes)
   .use(postRoutes)

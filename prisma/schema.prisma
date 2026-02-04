@@ -87,6 +87,8 @@ model Post {
   originalPost   Post?     @relation("Reposts", fields: [originalPostId], references: [id], onUpdate: NoAction, onDelete: NoAction)
   reposts        Post[]    @relation("Reposts")
   
+  views          Int       @default(0)
+  
   notifications  Notification[]
 
   createdAt DateTime  @default(now())
