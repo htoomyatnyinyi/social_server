@@ -176,8 +176,8 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       },
     });
-    return followers.map((f) => f.followerId);
-    // return followers.map((f) => f.follower);
+    // return followers.map((f) => f.followerId);
+    return followers.map((f) => f.follower);
   })
   .get("/:id/following", async ({ params: { id } }) => {
     const following = await prisma.follow.findMany({
@@ -194,8 +194,8 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       },
     });
-    return following.map((f) => f.followingId);
-    // return following.map((f) => f.following);
+    // return following.map((f) => f.followingId);
+    return following.map((f) => f.following);
   })
   .get("/:id/posts", async ({ params: { id } }) => {
     return await prisma.post.findMany({
@@ -230,6 +230,6 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
       orderBy: { createdAt: "desc" },
     });
-    return likes.map((l) => l.postId);
-    // return likes.map((l) => l.post);
+    // return likes.map((l) => l.postId);
+    return likes.map((l) => l.post);
   });
