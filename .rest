@@ -6,18 +6,19 @@ GET http://localhost:8080
 POST http://localhost:8080/auth/signup
 Content-Type: application/json
 
-{
-    "email": "test@example.com",
-    "password": "password",
-    "name": "Test User"
-}
+# {
+#     "email": "test@example.com",
+#     "password": "password",
+#     "name": "Test User"
+# }
 
 
-###
+
 {
-    "email": "test@example.com",
+    "email": "hmnn@noble.com",
     "password": "password",
-    "name": "Test User"
+    "name": "HMNN",
+    "username": "hmnn"
 }
 ###
 POST http://localhost:8080/auth/signin
@@ -39,6 +40,8 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI2cnRkb
 # docker compose exec api bunx prisma generate###
 ###
 GET http://localhost:8080/posts
+###
+GET http://localhost:8080/posts/cmlc6hg3c000228nx3qzd2uro/comments
 
 ###
 GET http://localhost:8080/posts?type=private

@@ -61,8 +61,8 @@ enum NotificationType {
   FOLLOW
   REPOST
   REPLY
-  QUOTE
-  MENTION
+  QUOTE    // Fixed: Added QUOTE as used in code
+  MENTION  // New: For @username mentions
 }
 
 model Follow {
