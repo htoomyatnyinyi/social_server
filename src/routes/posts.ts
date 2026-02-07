@@ -314,58 +314,64 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         },
       });
 
-      // New: Parse mentions
-      if (content) {
-        const mentionMatches = content.match(/@(\w+)/g) || [];
-        for (const match of mentionMatches) {
-          const username = match.slice(1);
-          const mentionedUser = await prisma.user.findUnique({
-            where: { username },
-          });
+      // Offload side effects to background
+      (async () => {
+        try {
+          if (content) {
+            const mentionMatches = content.match(/@(\w+)/g) || [];
+            for (const match of mentionMatches) {
+              const username = match.slice(1);
+              const mentionedUser = await prisma.user.findUnique({
+                where: { username },
+              });
 
-          if (mentionedUser && mentionedUser.id !== userId) {
-            // Create mention record
-            await prisma.mention.create({
-              data: {
-                userId: mentionedUser.id,
-                postId: post.id,
-              },
-            });
-
-            // Notify
-            await prisma.notification.create({
-              data: {
-                type: "MENTION",
-                recipientId: mentionedUser.id,
-                issuerId: userId,
-                postId: post.id,
-              },
-            });
-
-            // Special: @grok
-            if (username === "grok") {
-              const question = content.replace(/@grok\s*/i, "").trim();
-              if (question) {
-                const prompt = `Answer this question about the post: "${question}". Post content: "${post.content || ""}"`;
-                const aiResponse = await generateAIResponse(prompt);
-
-                const botUser = await prisma.user.findUnique({
-                  where: { username: "grok" },
+              if (mentionedUser && mentionedUser.id !== userId) {
+                // Create mention record
+                await prisma.mention.create({
+                  data: {
+                    userId: mentionedUser.id,
+                    postId: post.id,
+                  },
                 });
-                if (botUser) {
-                  await prisma.comment.create({
-                    data: {
-                      content: aiResponse,
-                      userId: botUser.id,
-                      postId: post.id,
-                    },
-                  });
+
+                // Notify
+                await prisma.notification.create({
+                  data: {
+                    type: "MENTION",
+                    recipientId: mentionedUser.id,
+                    issuerId: userId,
+                    postId: post.id,
+                  },
+                });
+
+                // Special: @grok
+                if (username === "grok") {
+                  const question = content.replace(/@grok\s*/i, "").trim();
+                  if (question) {
+                    const prompt = `Answer this question about the post: "${question}". Post content: "${post.content || ""}"`;
+                    const aiResponse = await generateAIResponse(prompt);
+
+                    const botUser = await prisma.user.findUnique({
+                      where: { username: "grok" },
+                    });
+                    if (botUser) {
+                      await prisma.comment.create({
+                        data: {
+                          content: aiResponse,
+                          userId: botUser.id,
+                          postId: post.id,
+                        },
+                      });
+                    }
+                  }
                 }
               }
             }
           }
+        } catch (error) {
+          console.error("Background post processing error:", error);
         }
-      }
+      })();
 
       return post;
     },
@@ -506,14 +512,21 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       });
 
       if (originalPost.authorId !== (user.id as string)) {
-        await prisma.notification.create({
-          data: {
-            type: content ? "QUOTE" : "REPOST",
-            recipientId: originalPost.authorId,
-            issuerId: user.id as string,
-            postId: originalPost.id,
-          },
-        });
+        // Offload notification to background
+        (async () => {
+          try {
+            await prisma.notification.create({
+              data: {
+                type: content ? "QUOTE" : "REPOST",
+                recipientId: originalPost.authorId,
+                issuerId: user.id as string,
+                postId: originalPost.id,
+              },
+            });
+          } catch (error) {
+            console.error("Background repost notification error:", error);
+          }
+        })();
       }
 
       return repost;
@@ -775,86 +788,93 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
       const currentUserId = userId;
 
-      if (comment.post.authorId !== currentUserId) {
-        await prisma.notification.create({
-          data: {
-            type: "COMMENT",
-            recipientId: comment.post.authorId,
-            issuerId: currentUserId,
-            postId: id,
-            commentId: comment.id,
-          },
-        });
-      }
+      // Offload side effects to background
+      (async () => {
+        try {
+          if (comment.post.authorId !== currentUserId) {
+            await prisma.notification.create({
+              data: {
+                type: "COMMENT",
+                recipientId: comment.post.authorId,
+                issuerId: currentUserId,
+                postId: id,
+                commentId: comment.id,
+              },
+            });
+          }
 
-      if (comment.parent && comment.parent.userId !== currentUserId) {
-        await prisma.notification.create({
-          data: {
-            type: "REPLY",
-            recipientId: comment.parent.userId,
-            issuerId: currentUserId,
-            postId: id,
-            commentId: comment.id,
-          },
-        });
-      }
+          if (comment.parent && comment.parent.userId !== currentUserId) {
+            await prisma.notification.create({
+              data: {
+                type: "REPLY",
+                recipientId: comment.parent.userId,
+                issuerId: currentUserId,
+                postId: id,
+                commentId: comment.id,
+              },
+            });
+          }
 
-      // New: Parse mentions in comment
-      const mentionMatches = content.match(/@(\w+)/g) || [];
-      for (const match of mentionMatches) {
-        const username = match.slice(1);
-        const mentionedUser = await prisma.user.findUnique({
-          where: { username },
-        });
+          // Parse mentions in comment
+          const mentionMatches = content.match(/@(\w+)/g) || [];
+          for (const match of mentionMatches) {
+            const username = match.slice(1);
+            const mentionedUser = await prisma.user.findUnique({
+              where: { username },
+            });
 
-        if (mentionedUser && mentionedUser.id !== userId) {
-          // Create mention record
-          await prisma.mention.create({
-            data: {
-              userId: mentionedUser.id,
-              commentId: comment.id,
-            },
-          });
-
-          // Notify
-          await prisma.notification.create({
-            data: {
-              type: "MENTION",
-              recipientId: mentionedUser.id,
-              issuerId: userId,
-              postId: id,
-              commentId: comment.id,
-            },
-          });
-
-          // Special: @grok
-          if (username === "grok") {
-            const question = content.replace(/@grok\s*/i, "").trim();
-            if (question) {
-              const postContent = await prisma.post.findUnique({
-                where: { id },
-                select: { content: true },
+            if (mentionedUser && mentionedUser.id !== userId) {
+              // Create mention record
+              await prisma.mention.create({
+                data: {
+                  userId: mentionedUser.id,
+                  commentId: comment.id,
+                },
               });
-              const prompt = `Answer this question about the post: "${question}". Post content: "${postContent?.content || ""}"`;
-              const aiResponse = await generateAIResponse(prompt);
 
-              const botUser = await prisma.user.findUnique({
-                where: { username: "grok" },
+              // Notify
+              await prisma.notification.create({
+                data: {
+                  type: "MENTION",
+                  recipientId: mentionedUser.id,
+                  issuerId: userId,
+                  postId: id,
+                  commentId: comment.id,
+                },
               });
-              if (botUser) {
-                await prisma.comment.create({
-                  data: {
-                    content: aiResponse,
-                    userId: botUser.id,
-                    postId: id,
-                    parentId: comment.id, // Reply to the mentioning comment
-                  },
-                });
+
+              // Special: @grok
+              if (username === "grok") {
+                const question = content.replace(/@grok\s*/i, "").trim();
+                if (question) {
+                  const postContent = await prisma.post.findUnique({
+                    where: { id: id },
+                    select: { content: true },
+                  });
+                  const prompt = `Answer this question about the post: "${question}". Post content: "${postContent?.content || ""}"`;
+                  const aiResponse = await generateAIResponse(prompt);
+
+                  const botUser = await prisma.user.findUnique({
+                    where: { username: "grok" },
+                  });
+                  if (botUser) {
+                    await prisma.comment.create({
+                      data: {
+                        content: aiResponse,
+                        userId: botUser.id,
+                        postId: id,
+                        parentId: comment.id, // Reply to the mentioning comment
+                      },
+                    });
+                  }
+                }
               }
             }
           }
+        } catch (error) {
+          console.error("Background comment processing error:", error);
         }
-      }
+      })();
 
       return comment;
     },

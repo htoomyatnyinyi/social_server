@@ -6,26 +6,27 @@ GET http://localhost:8080
 POST http://localhost:8080/auth/signup
 Content-Type: application/json
 
-# {
-#     "email": "test@example.com",
-#     "password": "password",
-#     "name": "Test User"
-# }
-
-
-
 {
-    "email": "hmnn@noble.com",
+    "email": "test@example.com",
     "password": "password",
-    "name": "HMNN",
-    "username": "hmnn"
+    "name": "Test User",
+    "username": "testuser"
 }
+
+
+
+# {
+#     "email": "hmnn@noble.com",
+#     "password": "password",
+#     "name": "HMNN",
+#     "username": "hmnn"
+# }
 ###
 POST http://localhost:8080/auth/signin
 Content-Type: application/json
 
 {
-    "email": "test@example.com",
+    "email": "hmnn@noble.com",
     "password": "password"
 }
 ###
@@ -41,7 +42,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI2cnRkb
 ###
 GET http://localhost:8080/posts
 ###
-GET http://localhost:8080/posts/cmlc6hg3c000228nx3qzd2uro/comments
+GET http://localhost:8080/posts/cmlc9veps00041eqwx4nbsegs/comments
 
 ###
 GET http://localhost:8080/posts?type=private
