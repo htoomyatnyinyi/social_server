@@ -1,9 +1,9 @@
 
 ###
-GET http://localhost:8080
+GET http://[IP_ADDRESS]
 
 ###
-POST http://localhost:8080/auth/signup
+POST http://[IP_ADDRESS]/auth/signup
 Content-Type: application/json
 
 {

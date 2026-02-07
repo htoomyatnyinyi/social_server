@@ -13,6 +13,7 @@ const app = new Elysia()
   .use(cors())
   .use(staticPlugin())
   // .use(websocket())
+  .get("/", () => ({ message: "Social App Server Ready" }))
   .get("/status", () => ({ message: "SOCIAL_APP_SERVER IS RUNNING" }))
   .use(authRoutes)
   .use(postRoutes)
@@ -20,7 +21,10 @@ const app = new Elysia()
   .use(profileRoutes)
   .use(notificationRoutes)
   .use(settingsRoutes)
-  .listen(process.env.PORT || 8080);
+  .listen({
+    port: parseInt(process.env.PORT || "8080"),
+    hostname: process.env.HOST || "0.0.0.0",
+  });
 
 console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
