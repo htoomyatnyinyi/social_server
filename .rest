@@ -26,24 +26,36 @@ POST http://localhost:8080/auth/signin
 Content-Type: application/json
 
 {
-    "email": "hmnn@noble.com",
+    "email": "test@example.com",
     "password": "password"
 }
-###
+### 
 POST http://localhost:8080/posts
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbDI2cnRkbDAwMDAyOHA5MjNlczU2YnciLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3Njk4NTk3NDR9.bCtqH7lLHKwy-tlPeGkk_OWsPemYvfFsXwsqZtmcSaY
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGNhZ25odTAwMDAxZG85NnJ6Nnlqc20iLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA0NjcyMjF9.7PaQ340yAmHqSbRUhXF1Nmd_hrBNf10MxZ6ijl-flGU
 
 {
-    "content": "Hello "
+    "content": "Hello Form Linux"
 }
 ###
 # docker compose exec api bunx prisma generate###
 ###
 GET http://localhost:8080/posts
-###
-GET http://localhost:8080/posts/cmlc9veps00041eqwx4nbsegs/comments
 
+###
+DELETE http://localhost:8080/posts/cmlcaj27c00011do967539111
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGNhZ25odTAwMDAxZG85NnJ6Nnlqc20iLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA0NjcyMjF9.7PaQ340yAmHqSbRUhXF1Nmd_hrBNf10MxZ6ijl-flGU
+###
+POST  http://localhost:8080/posts/cmldk0wqn000e1dmw6pc709yg/bookmark
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGNhZ25odTAwMDAxZG85NnJ6Nnlqc20iLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA0NjcyMjF9.7PaQ340yAmHqSbRUhXF1Nmd_hrBNf10MxZ6ijl-flGU
+
+###
+DELETE http://localhost:8080/posts/cmldk0wqn000e1dmw6pc709yg/bookmark
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGNhZ25odTAwMDAxZG85NnJ6Nnlqc20iLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA0NjcyMjF9.7PaQ340yAmHqSbRUhXF1Nmd_hrBNf10MxZ6ijl-flGU
+
+###
+GET http://localhost:8080/posts/bookmark
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGNhZ25odTAwMDAxZG85NnJ6Nnlqc20iLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA0NjcyMjF9.7PaQ340yAmHqSbRUhXF1Nmd_hrBNf10MxZ6ijl-flGU
 ###
 GET http://localhost:8080/posts?type=private
 

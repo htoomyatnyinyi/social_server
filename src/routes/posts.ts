@@ -28,6 +28,10 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           select: { id: true, name: true, username: true, image: true },
         },
         likes: true,
+        bookmarks: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
         originalPost: {
           include: {
             author: {
@@ -80,7 +84,76 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
   })
 
   // end generated
+  // end generated
   // ###
+  .get("/bookmarks", async ({ user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const bookmarks = await prisma.bookmark.findMany({
+      where: { userId: user.id as string },
+      include: {
+        post: {
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+            likes: true,
+            _count: {
+              select: {
+                likes: true,
+                bookmarks: {
+                  where: { userId: user ? (user.id as string) : undefined },
+                  select: { userId: true },
+                },
+                comments: true,
+                shares: true,
+                reposts: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return bookmarks.map((b: any) => b.post);
+  })
+
+  .post("/:id/bookmark", async ({ params: { id }, user }) => {
+    if (!user) {
+      return { message: "Unauthorized" };
+    }
+
+    const bookmark = await prisma.bookmark.create({
+      data: {
+        userId: user.id,
+        postId: id,
+      },
+    });
+
+    return bookmark;
+  })
+
+  .delete("/:id/bookmark", async ({ params: { id }, user }) => {
+    if (!user) {
+      return { message: "Unauthorized" };
+    }
+
+    const bookmark = await prisma.bookmark.delete({
+      where: {
+        userId_postId: {
+          userId: user.id,
+          postId: id,
+        },
+      },
+    });
+
+    return bookmark;
+  })
+
   .get("/", async ({ query, user, set }) => {
     const { type } = query;
     let where: any = { isPublic: true };
@@ -587,6 +660,39 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     }
 
     return { message: "Liked" };
+  })
+  .post("/:id/bookmark", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+
+    const existingBookmark = await prisma.bookmark.findUnique({
+      where: {
+        userId_postId: {
+          userId,
+          postId: id,
+        },
+      },
+    });
+
+    if (existingBookmark) {
+      await prisma.bookmark.delete({
+        where: { id: existingBookmark.id },
+      });
+      return { message: "Bookmark removed", bookmarked: false };
+    }
+
+    await prisma.bookmark.create({
+      data: {
+        userId,
+        postId: id,
+      },
+    });
+
+    return { message: "Post bookmarked", bookmarked: true };
   })
   .post("/:id/view", async ({ params: { id }, set }) => {
     // Increment view count for a post

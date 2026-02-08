@@ -232,18 +232,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  studio:
-    build: .
-    # Using --hostname 0.0.0.0 is critical for accessing it from your browser
-    command: bunx prisma studio --port 5555 --hostname 0.0.0.0
-    ports:
-      - "5555:5555"
-    environment:
-      DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
-    depends_on:
-      db:
-        condition: service_healthy
+  # studio:
+  #   build: .
+  #   # Using --hostname 0.0.0.0 is critical for accessing it from your browser
+  #   command: bunx prisma studio --port 5555 --hostname 0.0.0.0
+  #   ports:
+  #     - "5555:5555"
+  #   environment:
+  #     DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
 
   # studio:
   #   build: .
