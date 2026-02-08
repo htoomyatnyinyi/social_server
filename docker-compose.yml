@@ -228,12 +228,21 @@ services:
       - .env
     environment:
       DATABASE_URL: "mysql://oasis:oasis_password@db:3306/social_db"
+      REDIS_URL: "redis://redis:6379"
       PORT: 8080
     depends_on:
       db:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      redis:
+        condition: service_started
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
 
   # studio:
   #   build: .

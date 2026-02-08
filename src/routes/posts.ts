@@ -3,6 +3,26 @@ import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
 import cloudinary from "../lib/cloudinary";
 import { generateAIResponse, moderateContent } from "../lib/ai";
+import redis from "../lib/redis";
+
+// Background job to sync views every 1 minute
+setInterval(async () => {
+  const keys = await redis.keys("post:views:*");
+  if (keys.length === 0) return;
+
+  for (const key of keys) {
+    const postId = key.split(":")[2];
+    const views = await redis.get(key);
+    if (views) {
+      await prisma.post.update({
+        where: { id: postId },
+        data: { views: { increment: parseInt(views) } },
+      });
+      await redis.del(key);
+    }
+  }
+  console.log(`Synced views for ${keys.length} posts`);
+}, 60000);
 
 export const postRoutes = new Elysia({ prefix: "/posts" })
   .use(
@@ -57,22 +77,75 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     return post;
   })
-  // Grok
-  .get("/feed", async ({ user }) => {
-    if (!user) return []; // Or public only
-    const following = await prisma.follow.findMany({
-      // where: { followerId: user.id },
-      where: { followerId: user.id },
-      select: { followingId: true },
-    });
-    return prisma.post.findMany({
+  // Grok & Redis Optimized Feed
+  .get("/feed", async ({ user, query }) => {
+    if (!user) return [];
+
+    // @ts-ignore
+    const { cursor, limit = 20 } = query;
+    const take = parseInt(limit as any) || 20;
+
+    // Cache following list
+    const followingKey = `user:${user.id}:following`;
+    let followingIds = await redis.smembers(followingKey);
+
+    if (followingIds.length === 0) {
+      const following = await prisma.follow.findMany({
+        where: { followerId: user.id as string },
+        select: { followingId: true },
+      });
+      followingIds = following.map((f: any) => f.followingId);
+      if (followingIds.length > 0) {
+        await redis.sadd(followingKey, ...followingIds);
+        await redis.expire(followingKey, 300); // 5 minutes cache
+      }
+    }
+
+    if (followingIds.length === 0) return []; // Not following anyone
+
+    const posts = await prisma.post.findMany({
       where: {
-        authorId: { in: following.map((f: any) => f.followingId) },
+        authorId: { in: followingIds },
         isPublic: true,
       },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: take + 1, // Fetch one extra to determine if there's a next page
+      cursor: cursor ? { id: cursor as string } : undefined,
+      skip: cursor ? 1 : 0,
+      include: {
+        author: {
+          select: { id: true, name: true, username: true, image: true },
+        },
+        // Optimize: Remove full likes array, rely on count + user context checks if needed
+        // @ts-ignore
+        likes: {
+          where: { userId: user ? (user.id as string) : "dummy" },
+          select: { userId: true }, // Just to check if current user liked
+        },
+        originalPost: {
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+          },
+        },
+        // @ts-ignore
+        _count: {
+          select: { likes: true, comments: true, shares: true, reposts: true },
+        },
+      },
     });
+
+    let nextCursor: string | null = null;
+    if (posts.length > take) {
+      const nextItem = posts.pop();
+      nextCursor = nextItem?.id || null;
+    }
+
+    return {
+      posts,
+      nextCursor,
+    };
   })
 
   // generated
@@ -155,7 +228,10 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
   })
 
   .get("/", async ({ query, user, set }) => {
-    const { type } = query;
+    // @ts-ignore
+    const { type, cursor, limit = 20 } = query;
+    const take = parseInt(limit as any) || 20;
+
     let where: any = { isPublic: true };
 
     if (type === "private") {
@@ -166,13 +242,17 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       where = { isPublic: false, authorId: user.id };
     }
 
-    return await prisma.post.findMany({
+    const posts = await prisma.post.findMany({
       where,
       include: {
         author: {
           select: { id: true, name: true, username: true, image: true },
         },
-        likes: true,
+        // @ts-ignore
+        likes: {
+          where: { userId: user ? (user.id as string) : "dummy_value" },
+          select: { userId: true },
+        },
         originalPost: {
           include: {
             author: {
@@ -196,13 +276,27 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           },
           take: 3,
         },
+        // @ts-ignore
         _count: {
           select: { likes: true, comments: true, shares: true, reposts: true },
         },
       },
       orderBy: { createdAt: "desc" },
-      take: 20, // New: Basic Pagination
+      take: take + 1,
+      cursor: cursor ? { id: cursor as string } : undefined,
+      skip: cursor ? 1 : 0,
     });
+
+    let nextCursor: string | null = null;
+    if (posts.length > take) {
+      const nextItem = posts.pop();
+      nextCursor = nextItem?.id || null;
+    }
+
+    return {
+      posts,
+      nextCursor,
+    };
   })
 
   .get("/:id/comments", async ({ params: { id } }) => {
@@ -695,21 +789,14 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     return { message: "Post bookmarked", bookmarked: true };
   })
   .post("/:id/view", async ({ params: { id }, set }) => {
-    // Increment view count for a post
+    // Increment view count in Redis
     try {
-      await prisma.post.update({
-        where: { id },
-        data: {
-          views: {
-            increment: 1,
-          },
-        },
-      });
-
+      await redis.incr(`post:views:${id}`);
       return { message: "View count incremented" };
     } catch (error) {
-      set.status = 404;
-      return { message: "Post not found" };
+      // Fallback or ignore
+      console.error("Redis view incr error:", error);
+      return { message: "View count error" };
     }
   })
   .post("/:id/share", async ({ params: { id }, user, set }) => {
