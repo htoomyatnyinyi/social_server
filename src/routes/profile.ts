@@ -197,24 +197,34 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
     // return following.map((f) => f.followingId);
     return following.map((f) => f.following);
   })
-  .get("/:id/posts", async ({ params: { id } }) => {
+  .get("/:id/posts", async ({ params: { id }, user }) => {
+    const where: any = { authorId: id };
+    if (!user || user.id !== id) {
+      where.isPublic = true;
+    }
+
     return await prisma.post.findMany({
-      where: { authorId: id },
+      where,
       include: {
         author: {
           select: { id: true, name: true, username: true, image: true },
         },
         likes: true,
         _count: {
-          select: { likes: true, comments: true, reposts: true },
+          select: { likes: true, comments: true, reposts: true, shares: true },
         },
       },
       orderBy: { createdAt: "desc" },
     });
   })
-  .get("/:id/likes", async ({ params: { id } }) => {
+  .get("/:id/likes", async ({ params: { id }, user }) => {
+    const isOwner = user && user.id === id;
+
     const likes = await prisma.like.findMany({
-      where: { userId: id },
+      where: {
+        userId: id,
+        post: isOwner ? {} : { isPublic: true },
+      },
       include: {
         post: {
           include: {
@@ -223,7 +233,12 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
             },
             likes: true,
             _count: {
-              select: { likes: true, comments: true, reposts: true },
+              select: {
+                likes: true,
+                comments: true,
+                reposts: true,
+                shares: true,
+              },
             },
           },
         },

@@ -168,20 +168,30 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         return { message: "Cannot create chat with yourself" };
       }
 
-      // Check if they are following each other (optional requirement from user)
-      const follow = await prisma.follow.findFirst({
+      // Check if they follow each other (mutual follow)
+      const follow1 = await prisma.follow.findUnique({
         where: {
-          OR: [
-            { followerId: currentUserId, followingId: targetUserId },
-            { followerId: targetUserId, followingId: currentUserId },
-          ],
+          followerId_followingId: {
+            followerId: currentUserId,
+            followingId: targetUserId,
+          },
         },
       });
 
-      if (!follow) {
+      const follow2 = await prisma.follow.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: targetUserId,
+            followingId: currentUserId,
+          },
+        },
+      });
+
+      if (!follow1 || !follow2) {
         set.status = 403;
         return {
-          message: "You must follow each other to start a private chat",
+          message:
+            "You must follow each other mutually to start a private chat",
         };
       }
 

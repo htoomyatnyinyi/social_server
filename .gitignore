@@ -1,43 +1,52 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+node_modules
+.env
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# testing
-/coverage
+# # dependencies
+# /node_modules
+# /.pnp
+# .pnp.js
 
-# next.js
-/.next/
-/out/
+# # testing
+# /coverage
 
-# production
-/build
+# # next.js
+# /.next/
+# /out/
 
-# misc
-.DS_Store
-*.pem
+# # production
+# /build
+# .env
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# # misc
+# .DS_Store
+# *.pem
 
-# local env files
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# # debug
+# npm-debug.log*
+# yarn-debug.log*
+# yarn-error.log*
 
-# vercel
-.vercel
+# # local env files
+# .env.local
+# .env.development.local
+# .env.test.local
+# .env.production.local
 
-**/*.trace
-**/*.zip
-**/*.tar.gz
-**/*.tgz
-**/*.log
-package-lock.json
-**/*.bun
-/src/generated/prisma
+# # vercel
+# .vercel
+
+# **/*.trace
+# **/*.zip
+# **/*.tar.gz
+# **/*.tgz
+# **/*.log
+# package-lock.json
+# **/*.bun
+# /src/generated/prisma
+
+# .env
+# .env.*
+# !.env.example
+
