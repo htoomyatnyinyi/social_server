@@ -24,6 +24,41 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
 
     return { user };
   })
+  .get("/suggestions", async ({ user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+
+    // Get users I already follow
+    const following = await prisma.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+
+    const followingIds = following.map((f: any) => f.followingId);
+    followingIds.push(userId); // Exclude self
+
+    // Find users NOT in followingIds
+    const suggestions = await prisma.user.findMany({
+      where: {
+        id: { notIn: followingIds },
+      },
+      take: 10,
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        image: true,
+        bio: true,
+      },
+      orderBy: { createdAt: "desc" }, // Simple strategy: newest users
+    });
+
+    return suggestions;
+  })
   .get("/:id", async ({ params: { id }, user }) => {
     const profile = await prisma.user.findUnique({
       where: { id },
@@ -114,6 +149,28 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       }),
     },
   )
+  // ### block user
+  .post("/:id/block", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    try {
+      await prisma.block.create({
+        data: {
+          blockId: id,
+          userId: user.id as string,
+        },
+      });
+      return { message: "User blocked" };
+    } catch (error) {
+      set.status = 404;
+      return { message: "User not found" };
+    }
+  })
+
+  // ### end block user
   .post("/:id/follow", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
@@ -126,6 +183,17 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
     if (followerId === followingId) {
       set.status = 400;
       return { message: "You cannot follow yourself" };
+    }
+
+    console.log(`User ${followerId} toggling follow on ${followingId}`);
+
+    // Safety check just in case
+    const followingExists = await prisma.user.findUnique({
+      where: { id: followingId },
+    });
+    if (!followingExists) {
+      set.status = 404;
+      return { message: "User not found" };
     }
 
     const existingFollow = await prisma.follow.findUnique({
@@ -141,7 +209,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       await prisma.follow.delete({
         where: { id: existingFollow.id },
       });
-      return { message: "Unfollowed" };
+      return { message: "Unfollowed", isFollowing: false };
     }
 
     await prisma.follow.create({
@@ -151,15 +219,19 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
     });
 
-    await prisma.notification.create({
-      data: {
-        type: "FOLLOW",
-        recipientId: followingId,
-        issuerId: followerId,
-      },
-    });
+    try {
+      await prisma.notification.create({
+        data: {
+          type: "FOLLOW",
+          recipientId: followingId,
+          issuerId: followerId,
+        },
+      });
+    } catch (err) {
+      console.error("Failed to create follow notification", err);
+    }
 
-    return { message: "Followed" };
+    return { message: "Followed", isFollowing: true };
   })
   .get("/:id/followers", async ({ params: { id } }) => {
     const followers = await prisma.follow.findMany({
@@ -177,7 +249,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
     });
     // return followers.map((f) => f.followerId);
-    return followers.map((f) => f.follower);
+    return followers.map((f: any) => f.follower);
   })
   .get("/:id/following", async ({ params: { id } }) => {
     const following = await prisma.follow.findMany({
@@ -195,7 +267,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
     });
     // return following.map((f) => f.followingId);
-    return following.map((f) => f.following);
+    return following.map((f: any) => f.following);
   })
   .get("/:id/posts", async ({ params: { id }, user }) => {
     const where: any = { authorId: id };
@@ -246,5 +318,5 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       orderBy: { createdAt: "desc" },
     });
     // return likes.map((l) => l.postId);
-    return likes.map((l) => l.post);
+    return likes.map((l: any) => l.post);
   });

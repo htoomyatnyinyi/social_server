@@ -7,10 +7,10 @@ POST http://localhost:8080/auth/signup
 Content-Type: application/json
 
 {
-    "email": "test@example.com",
+    "email": "test1@example.com",
     "password": "password",
-    "name": "Test User",
-    "username": "testuser"
+    "name": "Test User1",
+    "username": "testuser1"
 }
 
 
@@ -58,6 +58,10 @@ GET http://localhost:8080/posts/bookmark
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGNhZ25odTAwMDAxZG85NnJ6Nnlqc20iLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA0NjcyMjF9.7PaQ340yAmHqSbRUhXF1Nmd_hrBNf10MxZ6ijl-flGU
 ###
 GET http://localhost:8080/posts?type=private
+
+###
+DELETE http://localhost:8080/posts/cmlg132bb000429numep7trym
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtbGcwaHk3czAwMDAyOW51cGRxOGMzNWYiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJpYXQiOjE3NzA3Nzc5MTF9.jbQDYk7EpJSH9-QBlGvZ7YjbHCgTAfnkAbG6LPM27jA
 
 
 ###

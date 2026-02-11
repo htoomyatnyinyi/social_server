@@ -818,6 +818,65 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       return { message: "Post not found" };
     }
   })
+  // ### start
+  .post("/:id/share", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    try {
+      await prisma.share.create({
+        data: {
+          postId: id,
+          userId: user.id as string,
+        },
+      });
+      return { message: "Post shared" };
+    } catch (error) {
+      set.status = 404;
+      return { message: "Post not found" };
+    }
+  })
+  .post("/:id/report", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    try {
+      await prisma.report.create({
+        data: {
+          postId: id,
+          userId: user.id as string,
+        },
+      });
+      return { message: "Post reported" };
+    } catch (error) {
+      set.status = 404;
+      return { message: "Post not found" };
+    }
+  })
+  .post("/:id/block", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    try {
+      await prisma.block.create({
+        data: {
+          postId: id,
+          userId: user.id as string,
+        },
+      });
+      return { message: "Post blocked" };
+    } catch (error) {
+      set.status = 404;
+      return { message: "Post not found" };
+    }
+  })
+  // ### end
   .delete("/:id", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
@@ -827,6 +886,8 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     const post = await prisma.post.findUnique({
       where: { id },
     });
+
+    console.log(post, id, user, "at backend check");
 
     if (!post) {
       set.status = 404;
