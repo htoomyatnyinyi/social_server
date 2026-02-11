@@ -68,6 +68,7 @@ enum NotificationType {
   REPLY
   QUOTE
   MENTION
+  MESSAGE
 }
 
 model Follow {

@@ -71,3 +71,12 @@ events.on("notification", ({ recipientId }) => {
   console.log(`Broadcasting notification refresh to ${topic}`);
   app.server?.publish(topic, JSON.stringify({ type: "refresh" }));
 });
+
+events.on("new_message", ({ chatId, message }) => {
+  console.log(`Broadcasting new message to chat: ${chatId}`);
+  const response = {
+    type: "new_message",
+    ...message,
+  };
+  app.server?.publish(chatId, JSON.stringify(response));
+});
