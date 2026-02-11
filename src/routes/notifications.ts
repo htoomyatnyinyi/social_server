@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
+import { events } from "../lib/events";
 
 export const notificationRoutes = new Elysia({ prefix: "/notifications" })
   .use(
@@ -18,6 +19,26 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
 
     return { user };
   })
+  .ws("/ws", {
+    query: t.Object({
+      token: t.String(),
+    }),
+    async open(ws) {
+      const { token } = ws.data.query;
+      try {
+        const payload = await (ws.data as any).jwt.verify(token);
+        if (payload && payload.id) {
+          const userId = payload.id;
+          ws.subscribe(`user:${userId}`);
+          console.log(`Subscribed WS to topic: user:${userId}`);
+        } else {
+          ws.close();
+        }
+      } catch (err) {
+        ws.close();
+      }
+    },
+  })
   .get("/", async ({ user, set }) => {
     if (!user) {
       set.status = 401;
@@ -29,13 +50,30 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
     return await prisma.notification.findMany({
       where: { recipientId: userId },
       include: {
-        issuer: { select: { id: true, name: true, username: true, image: true } },
+        issuer: {
+          select: { id: true, name: true, username: true, image: true },
+        },
         post: { select: { id: true, content: true, image: true } },
         comment: { select: { id: true, content: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
+  })
+  .get("/unread-count", async ({ user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const count = await prisma.notification.count({
+      where: {
+        recipientId: user.id as string,
+        read: false,
+      },
+    });
+
+    return { count };
   })
   .post("/read-all", async ({ user, set }) => {
     if (!user) {

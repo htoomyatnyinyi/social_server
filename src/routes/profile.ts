@@ -24,6 +24,41 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
 
     return { user };
   })
+  .get("/suggestions", async ({ user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+
+    // Get users I already follow
+    const following = await prisma.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+
+    const followingIds = following.map((f: any) => f.followingId);
+    followingIds.push(userId); // Exclude self
+
+    // Find users NOT in followingIds
+    const suggestions = await prisma.user.findMany({
+      where: {
+        id: { notIn: followingIds },
+      },
+      take: 10,
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        image: true,
+        bio: true,
+      },
+      orderBy: { createdAt: "desc" }, // Simple strategy: newest users
+    });
+
+    return suggestions;
+  })
   .get("/:id", async ({ params: { id }, user }) => {
     const profile = await prisma.user.findUnique({
       where: { id },

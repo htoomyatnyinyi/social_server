@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
+import { events } from "../lib/events";
 
 export const chatRoutes = new Elysia({ prefix: "/chat" })
   .use(
@@ -104,6 +105,23 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         ws.publish(chatId, response);
         // Also send back to the sender
         ws.send(response);
+
+        // Notify recipient
+        const recipientId = savedMessage.receiverId;
+        if (recipientId) {
+          try {
+            await prisma.notification.create({
+              data: {
+                type: "MESSAGE",
+                recipientId,
+                issuerId: finalSenderId as string,
+              },
+            });
+            events.emit("notification", { recipientId });
+          } catch (e) {
+            console.error("Failed to create message notification", e);
+          }
+        }
       } catch (error) {
         console.error("Error saving/sending message:", error);
       }
