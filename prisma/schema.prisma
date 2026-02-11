@@ -31,6 +31,9 @@ model User {
   actions       Notification[] @relation("Issuer")
   mentions      Mention[]
   bookmarks     Bookmark[]
+  reports       Report[]
+  blocks        Block[]     @relation("Blocked")
+  blockers      Block[]     @relation("Blocker")
   
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -98,6 +101,7 @@ model Post {
   notifications  Notification[]
   mentions       Mention[]
   bookmarks      Bookmark[]
+  reports        Report[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -186,4 +190,32 @@ model Bookmark {
   createdAt DateTime @default(now())
 
   @@unique([userId, postId])
+}
+model Report {
+  id        String   @id @default(cuid())
+  reason    ReportReason
+  userId    String
+  reporter  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+}
+enum ReportReason {
+  SPAM
+  HATE_SPEECH
+  HARASSMENT
+  OTHER
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  userId    String
+  blocker   User     @relation("Blocker", fields: [userId], references: [id], onDelete: Cascade)
+  blockId   String
+  blocked   User     @relation("Blocked", fields: [blockId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, blockId])
 }
