@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
 import { events } from "../lib/events";
+import { updateUserStatus } from "../lib/status";
 
 export const chatRoutes = new Elysia({ prefix: "/chat" })
   .use(
@@ -59,7 +60,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       // Optional: Check if user belongs to the chat room
       const userId = (ws.data as any).userId;
       if (!chat.isPublic && userId) {
-        const isParticipant = chat.users.some((u) => u.id === userId);
+        const isParticipant = chat.users.some((u:any) => u.id === userId);
         if (!isParticipant) {
           console.error(
             `User ${userId} is not a participant of chat ${chatId}`,
@@ -71,6 +72,18 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
 
       ws.subscribe(chatId);
       console.log(`Connection opened for chat: ${chatId}`);
+
+      // Update user status
+      if (userId) {
+        updateUserStatus(userId);
+        ws.subscribe(`presence-${userId}`);
+      }
+    },
+    close(ws) {
+        const userId = (ws.data as any).userId;
+        if (userId) {
+            updateUserStatus(userId);
+        }
     },
     async message(ws, body) {
       const { message, chatId, senderId, receiverId } = body;
@@ -274,7 +287,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       }
 
       if (!chat.isPublic) {
-        const isParticipant = chat.users.some((u) => u.id === senderId);
+        const isParticipant = chat.users.some((u:any) => u.id === senderId);
         if (!isParticipant) {
           set.status = 403;
           return { message: "Not a participant" };
@@ -306,7 +319,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
 
         // Notify recipient
         const recipientUserId =
-          receiverId || chat.users.find((u) => u.id !== senderId)?.id;
+          receiverId || chat.users.find((u:any) => u.id !== senderId)?.id;
         if (recipientUserId && recipientUserId !== senderId) {
           try {
             await prisma.notification.create({
