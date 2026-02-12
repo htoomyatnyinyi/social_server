@@ -11,18 +11,23 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD",
+    #       "mysqladmin",
+    #       "ping",
+    #       "-h",
+    #       "localhost",
+    #       "-u",
+    #       "oasis",
+    #       "-poasis_password",
+    #     ]
+    #   interval: 10s
+    #   timeout: 5s
+      # retries: 5
     healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "oasis",
-          "-poasis_password",
-        ]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u oasis -p$MYSQL_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,32 +75,32 @@ services:
     ports:
       - "9091:8080"
 
-  # Add this for Zipline
-  zipline_db:
-    image: postgres:16-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: zipline
-      POSTGRES_PASSWORD: zipline_password
-      POSTGRES_DB: zipline
-    volumes:
-      - zipline_pgdata:/var/lib/postgresql/data
+  # # Add this for Zipline
+  # zipline_db:
+  #   image: postgres:16-alpine
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: zipline
+  #     POSTGRES_PASSWORD: zipline_password
+  #     POSTGRES_DB: zipline
+  #   volumes:
+  #     - zipline_pgdata:/var/lib/postgresql/data
 
-  zipline:
-    image: ghcr.io/diced/zipline:latest
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - CORE_RETURN_ORIGINAL=1
-      - CORE_SECRET=f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8
-      # Notice the protocol change to postgresql:// and host to zipline_db
-      - DATABASE_URL=postgresql://zipline:zipline_password@zipline_db:5432/zipline
-    volumes:
-      - ./zipline_data:/app/data
-      - ./uploads:/app/public/uploads
-    depends_on:
-      - zipline_db
+  # zipline:
+  #   image: ghcr.io/diced/zipline:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - CORE_RETURN_ORIGINAL=1
+  #     - CORE_SECRET=f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8
+  #     # Notice the protocol change to postgresql:// and host to zipline_db
+  #     - DATABASE_URL=postgresql://zipline:zipline_password@zipline_db:5432/zipline
+  #   volumes:
+  #     - ./zipline_data:/app/data
+  #     - ./uploads:/app/public/uploads
+  #   depends_on:
+  #     - zipline_db
 
 volumes:
   mysql_data:
