@@ -36,26 +36,7 @@ const app = new Elysia()
   //     user.lastSeen = new Date();
   //   }
   // })
-  .ws("/chat/ws", {
-    open(ws) {
-      const userId = ws.data.user.id;
-      // 1. Mark as online immediately on connect
-      updateUserStatus(userId);
 
-      // 2. Add to a "Presence" set (in-memory or Redis)
-      ws.subscribe(`presence-${userId}`);
-      console.log(`${userId} is now online`);
-    },
-    message(ws, message) {
-      // Optional: Update lastSeen on every message sent
-      // updateUserStatus(ws.data.user.id);
-      updateUserStatus(ws.data.user.id);
-    },
-    close(ws) {
-      // Mark lastSeen one last time on disconnect
-      updateUserStatus(ws.data.user.id);
-    },
-  })
   // ## end
   .listen({
     port: process.env.PORT || 8080,
@@ -70,4 +51,13 @@ events.on("notification", ({ recipientId }) => {
   const topic = `user:${recipientId}`;
   console.log(`Broadcasting notification refresh to ${topic}`);
   app.server?.publish(topic, JSON.stringify({ type: "refresh" }));
+});
+
+events.on("new_message", ({ chatId, message }) => {
+  console.log(`Broadcasting new message to chat: ${chatId}`);
+  const response = {
+    type: "new_message",
+    ...message,
+  };
+  app.server?.publish(chatId, JSON.stringify(response));
 });
