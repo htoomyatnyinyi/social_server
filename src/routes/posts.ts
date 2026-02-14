@@ -24,6 +24,34 @@ setInterval(async () => {
   console.log(`Synced views for ${keys.length} posts`);
 }, 60000);
 
+const getPostInclude = (userId: string | null) => ({
+  author: {
+    select: { id: true, name: true, username: true, image: true },
+  },
+  likes: {
+    where: { userId: userId ?? "dummy" },
+    select: { userId: true },
+  },
+  repostedBy: {
+    where: { userId: userId ?? "dummy" },
+    select: { userId: true },
+  },
+  bookmarks: {
+    where: { userId: userId ?? "dummy" },
+    select: { userId: true },
+  },
+  originalPost: {
+    include: {
+      author: {
+        select: { id: true, name: true, username: true, image: true },
+      },
+    },
+  },
+  _count: {
+    select: { likes: true, comments: true, shares: true, quotes: true },
+  },
+});
+
 export const postRoutes = new Elysia({ prefix: "/posts" })
   .use(
     jwt({
@@ -60,7 +88,11 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           },
         },
         _count: {
-          select: { likes: true, comments: true, shares: true, reposts: true },
+          select: { likes: true, comments: true, shares: true, quotes: true },
+        },
+        repostedBy: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
         },
       },
     });
@@ -85,6 +117,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     const { cursor, limit = 20 } = query;
     const take = parseInt(limit as any) || 20;
 
+    // User-specific include
+    const postInclude = getPostInclude(user.id as string);
+
     // Cache following list
     const followingKey = `user:${user.id}:following`;
     let followingIds = await redis.smembers(followingKey);
@@ -101,49 +136,81 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       }
     }
 
-    if (followingIds.length === 0) return []; // Not following anyone
+    if (followingIds.length === 0) return { posts: [], nextCursor: null };
 
+    const cursorDate = cursor ? new Date(parseInt(cursor as string)) : new Date();
+
+    // 1. Fetch Posts
     const posts = await prisma.post.findMany({
       where: {
         authorId: { in: followingIds },
         isPublic: true,
+        createdAt: { lt: cursorDate },
       },
       orderBy: { createdAt: "desc" },
-      take: take + 1, // Fetch one extra to determine if there's a next page
-      cursor: cursor ? { id: cursor as string } : undefined,
-      skip: cursor ? 1 : 0,
+      take: take,
+      include: postInclude,
+    });
+
+    // 2. Fetch Reposts
+    const reposts = await prisma.repost.findMany({
+      where: {
+        userId: { in: followingIds },
+        createdAt: { lt: cursorDate },
+      },
+      orderBy: { createdAt: "desc" },
+      take: take,
       include: {
-        author: {
+        user: {
           select: { id: true, name: true, username: true, image: true },
         },
-        // Optimize: Remove full likes array, rely on count + user context checks if needed
-        // @ts-ignore
-        likes: {
-          where: { userId: user ? (user.id as string) : "dummy" },
-          select: { userId: true }, // Just to check if current user liked
+        post: {
+          include: postInclude,
         },
-        originalPost: {
-          include: {
-            author: {
-              select: { id: true, name: true, username: true, image: true },
-            },
-          },
-        },
-        // @ts-ignore
-        _count: {
-          select: { likes: true, comments: true, shares: true, reposts: true },
-        },
+        // bookmarks: {
+        //   where: { userId: user ? (user.id as string) : undefined },
+        //   select: { userId: true },
+        // },
       },
     });
 
-    let nextCursor: string | null = null;
-    if (posts.length > take) {
-      const nextItem = posts.pop();
-      nextCursor = nextItem?.id || null;
-    }
+    // 3. Merge & Sort
+    const allItems = [...posts, ...reposts].sort(
+      (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime()
+    );
+
+    // 4. Slice
+    const slicedItems = allItems.slice(0, take);
+
+    // 5. Map to virtual posts
+    const results = slicedItems.map((item: any) => {
+      if (item.post) {
+        // Is Repost
+        return {
+          ...item.post, // The original post content
+          id: `repost_${item.id}`, // Virtual ID for the feed item
+          createdAt: item.createdAt, // Repost time
+          author: item.user, // The reposter
+          isRepost: true,
+          originalPost: item.post, // Keep original post ref for frontend compatibility if needed
+          repostedByMe: item.post.repostedBy.length > 0
+        };
+      }
+      return {
+        ...item,
+        repostedByMe: item.repostedBy.length > 0
+      };
+    });
+
+    // 6. Next Cursor
+    const lastItem = slicedItems[slicedItems.length - 1];
+    const nextCursor =
+      slicedItems.length === take
+        ? lastItem.createdAt.getTime().toString()
+        : null;
 
     return {
-      posts,
+      posts: results,
       nextCursor,
     };
   })
@@ -174,16 +241,20 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
               select: { id: true, name: true, username: true, image: true },
             },
             likes: true,
+            bookmarks: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            repostedBy: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
             _count: {
               select: {
                 likes: true,
-                bookmarks: {
-                  where: { userId: user ? (user.id as string) : undefined },
-                  select: { userId: true },
-                },
                 comments: true,
                 shares: true,
-                reposts: true,
+                quotes: true,
               },
             },
           },
@@ -278,7 +349,11 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         },
         // @ts-ignore
         _count: {
-          select: { likes: true, comments: true, shares: true, reposts: true },
+          select: { likes: true, comments: true, shares: true, quotes: true },
+        },
+        repostedBy: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -631,6 +706,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       }
 
       const { content, image } = body;
+      const userId = user.id as string;
 
       // New: Moderate content
       if (content && (await moderateContent(content))) {
@@ -647,56 +723,113 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         return { message: "Original post not found" };
       }
 
-      let imageUrl = null;
-      if (image && image.startsWith("data:image")) {
-        const uploadResponse = await cloudinary.uploader.upload(image, {
-          folder: "social_app/posts",
-        });
-        imageUrl = uploadResponse.secure_url;
-      }
+      // IS QUOTE (New Post)
+      if (content || image) {
+        let imageUrl = null;
+        if (image && image.startsWith("data:image")) {
+          const uploadResponse = await cloudinary.uploader.upload(image, {
+            folder: "social_app/posts",
+          });
+          imageUrl = uploadResponse.secure_url;
+        }
 
-      const repost = await prisma.post.create({
-        data: {
-          content: content || undefined,
-          image: imageUrl || undefined,
-          isRepost: true,
-          originalPostId: id,
-          authorId: user.id as string,
-          isPublic: true,
-        },
-        include: {
-          author: {
-            select: { id: true, name: true, username: true, image: true },
+        const quote = await prisma.post.create({
+          data: {
+            content: content || undefined,
+            image: imageUrl || undefined,
+            originalPostId: id,
+            authorId: userId,
+            isPublic: true,
           },
-          originalPost: {
-            include: {
-              author: {
-                select: { id: true, name: true, username: true, image: true },
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+            originalPost: {
+              include: {
+                author: {
+                  select: { id: true, name: true, username: true, image: true },
+                },
               },
             },
           },
-        },
-      });
+        });
 
-      if (originalPost.authorId !== (user.id as string)) {
-        // Offload notification to background
-        (async () => {
-          try {
-            await prisma.notification.create({
-              data: {
-                type: content ? "QUOTE" : "REPOST",
-                recipientId: originalPost.authorId,
-                issuerId: user.id as string,
-                postId: originalPost.id,
-              },
-            });
-          } catch (error) {
-            console.error("Background repost notification error:", error);
-          }
-        })();
+        // Increment reposts count on original post
+        await prisma.post.update({
+          where: { id },
+          data: { repostsCount: { increment: 1 } },
+        });
+
+        if (originalPost.authorId !== userId) {
+          (async () => {
+            try {
+              await prisma.notification.create({
+                data: {
+                  type: "QUOTE",
+                  recipientId: originalPost.authorId,
+                  issuerId: userId,
+                  postId: originalPost.id,
+                },
+              });
+            } catch (error) {
+              console.error("Background quote notification error:", error);
+            }
+          })();
+        }
+
+        return { ...quote, isQuote: true };
       }
+      
+      // IS PLAIN REPOST (Repost Record)
+      else {
+        // Check if already reposted
+        const existingRepost = await prisma.repost.findUnique({
+          where: {
+            userId_postId: {
+              userId,
+              postId: id,
+            },
+          },
+        });
 
-      return repost;
+        if (existingRepost) {
+          set.status = 400;
+          return { message: "Already reposted" };
+        }
+
+        const repost = await prisma.repost.create({
+          data: {
+            userId,
+            postId: id,
+          },
+        });
+
+        // Increment reposts count
+        await prisma.post.update({
+          where: { id },
+          data: { repostsCount: { increment: 1 } },
+        });
+
+        if (originalPost.authorId !== userId) {
+          (async () => {
+            try {
+              await prisma.notification.create({
+                data: {
+                  type: "REPOST",
+                  recipientId: originalPost.authorId,
+                  issuerId: userId,
+                  postId: originalPost.id,
+                },
+              });
+            } catch (error) {
+              console.error("Background repost notification error:", error);
+            }
+          })();
+        }
+
+        return { ...repost, isQuote: false };
+      }
     },
     {
       body: t.Object({
@@ -705,6 +838,46 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       }),
     },
   )
+
+  .delete("/:id/repost", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+
+    const existingRepost = await prisma.repost.findUnique({
+      where: {
+        userId_postId: {
+          userId,
+          postId: id,
+        },
+      },
+    });
+
+    if (!existingRepost) {
+      set.status = 404;
+      return { message: "Repost not found" };
+    }
+
+    await prisma.repost.delete({
+      where: {
+        userId_postId: {
+          userId,
+          postId: id,
+        },
+      },
+    });
+
+    // Decrement reposts count
+    await prisma.post.update({
+      where: { id },
+      data: { repostsCount: { decrement: 1 } },
+    });
+
+    return { message: "Repost removed" };
+  })
 
   .post("/:id/like", async ({ params: { id }, user, set }) => {
     if (!user) {

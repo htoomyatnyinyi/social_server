@@ -69,11 +69,11 @@ services:
   #     db:
   #       condition: service_healthy
 
-  adminer:
-    image: adminer
-    restart: always
-    ports:
-      - "9091:8080"
+  # adminer:
+  #   image: adminer
+  #   restart: always
+  #   ports:
+  #     - "9091:8080"
 
   # # Add this for Zipline
   # zipline_db:

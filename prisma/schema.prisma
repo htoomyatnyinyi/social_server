@@ -7,27 +7,27 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  username      String?   @unique
-  password      String?
-  name          String?
-  image         String?
-  bio           String?
-  googleId      String?   @unique
-  isVerified    Boolean   @default(false)
-  lastSeen      DateTime  @default(now())
-  posts         Post[]
-  likes         Like[]
-  comments      Comment[]
-  shares        Share[]
-  sentMessages  Message[]      @relation("SentMessages")
-  receivedMessages Message[]   @relation("ReceivedMessages")
-  chats         Chat[]
-  
-  followers     Follow[]       @relation("Following")
-  following     Follow[]       @relation("Followers")
-  
+  id               String    @id @default(cuid())
+  email            String    @unique
+  username         String?   @unique
+  password         String?
+  name             String?
+  image            String?
+  bio              String?
+  googleId         String?   @unique
+  isVerified       Boolean   @default(false)
+  lastSeen         DateTime  @default(now())
+  posts            Post[]
+  likes            Like[]
+  comments         Comment[]
+  shares           Share[]
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  chats            Chat[]
+
+  followers Follow[] @relation("Following")
+  following Follow[] @relation("Followers")
+
   notifications Notification[] @relation("Recipient")
   actions       Notification[] @relation("Issuer")
   mentions      Mention[]
@@ -35,9 +35,10 @@ model User {
   reports       Report[]
   blocks        Block[]        @relation("Blocked")
   blockers      Block[]        @relation("Blocker")
-  
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  reposts       Repost[] // Added Repost relation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Notification {
@@ -47,17 +48,17 @@ model Notification {
   recipient   User             @relation("Recipient", fields: [recipientId], references: [id], onDelete: Cascade)
   issuerId    String
   issuer      User             @relation("Issuer", fields: [issuerId], references: [id], onDelete: Cascade)
-  
-  postId      String?
-  post        Post?            @relation(fields: [postId], references: [id])
-  commentId   String?
-  comment     Comment?         @relation(fields: [commentId], references: [id])
-  
-  read        Boolean          @default(false)
-  createdAt   DateTime         @default(now())
 
-  @@map("notifications")
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id])
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id])
+
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
   @@index([recipientId, createdAt])
+  @@map("notifications")
 }
 
 enum NotificationType {
@@ -83,32 +84,47 @@ model Follow {
 }
 
 model Post {
-  id        String    @id @default(cuid())
-  content   String?   @db.Text
-  image     String?
-  isPublic  Boolean   @default(true)
-  authorId  String
-  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  likes     Like[]
-  comments  Comment[]
-  shares    Share[]
-  
-  isRepost    Boolean   @default(false)
-  originalPostId String?
-  originalPost   Post?     @relation("Reposts", fields: [originalPostId], references: [id], onUpdate: NoAction, onDelete: NoAction)
-  reposts        Post[]    @relation("Reposts")
-  
-  views          Int       @default(0)
-  
-  notifications  Notification[]
-  mentions       Mention[]
-  bookmarks      Bookmark[]
-  reports        Report[]
+  id       String    @id @default(cuid())
+  content  String?   @db.Text
+  image    String?
+  isPublic Boolean   @default(true)
+  authorId String
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes    Like[]
+  comments Comment[]
+  shares   Share[]
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  // Repost/Quote separation
+  // isRepost removed/deprecated in favor of checking originalPostId for quotes
+  originalPostId String?
+  originalPost   Post?   @relation("Quotes", fields: [originalPostId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  quotes         Post[]  @relation("Quotes") // Renamed from reposts
+
+  repostsCount Int      @default(0) // Total reposts (plain + quotes)
+  repostedBy   Repost[] // Plain reposts
+
+  views Int @default(0)
+
+  notifications Notification[]
+  mentions      Mention[]
+  bookmarks     Bookmark[]
+  reports       Report[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([authorId, createdAt])
+}
+
+model Repost {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
 }
 
 model Like {
@@ -123,20 +139,20 @@ model Like {
 }
 
 model Comment {
-  id        String   @id @default(cuid())
-  content   String   @db.Text
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  
-  parentId  String?
-  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  replies   Comment[] @relation("CommentReplies")
-  
+  id      String @id @default(cuid())
+  content String @db.Text
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId  String
+  post    Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  parentId String?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  replies  Comment[] @relation("CommentReplies")
+
   notifications Notification[]
   mentions      Mention[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -160,23 +176,23 @@ model Chat {
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  content    String   @db.Text
+  id         String  @id @default(cuid())
+  content    String  @db.Text
   senderId   String
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  sender     User    @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiverId String?
-  receiver   User?    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  receiver   User?   @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
 
-  chatId     String
-  chat       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }
 
 model Mention {
   id        String   @id @default(cuid())
-  postId    String?  
+  postId    String?
   post      Post?    @relation(fields: [postId], references: [id])
-  commentId String?  
+  commentId String?
   comment   Comment? @relation(fields: [commentId], references: [id])
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -193,17 +209,19 @@ model Bookmark {
 
   @@unique([userId, postId])
 }
+
 model Report {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   reason    ReportReason
   userId    String
-  reporter  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reporter  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  post      Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
 
   @@unique([userId, postId])
 }
+
 enum ReportReason {
   SPAM
   HATE_SPEECH
