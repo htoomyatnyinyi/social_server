@@ -29,10 +29,10 @@ POST http://localhost:8080/auth/signup
 Content-Type: application/json
 
 {
-    "email": "grok@noble.com",
+    "email": "user2@noble.com",
     "password": "password",
-    "name": "grok",
-    "username": "grok"
+    "name": "user2",
+    "username": "user2"
 }
 
 # {
