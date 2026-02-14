@@ -270,23 +270,104 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
     return following.map((f: any) => f.following);
   })
   .get("/:id/posts", async ({ params: { id }, user }) => {
-    const where: any = { authorId: id };
-    if (!user || user.id !== id) {
-      where.isPublic = true;
-    }
-
-    return await prisma.post.findMany({
-      where,
+    // 1. Fetch Posts authored by user
+    const posts = await prisma.post.findMany({
+      where: {
+        authorId: id,
+        isPublic: !user || user.id !== id ? true : undefined,
+      },
       include: {
         author: {
           select: { id: true, name: true, username: true, image: true },
         },
-        likes: true,
+        likes: {
+          where: { userId: user ? (user.id as string) : "dummy" },
+          select: { userId: true },
+        },
+        repostedBy: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        originalPost: {
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+          },
+        },
         _count: {
-          select: { likes: true, comments: true, reposts: true, shares: true },
+          select: { likes: true, comments: true, quotes: true, shares: true },
         },
       },
       orderBy: { createdAt: "desc" },
+    });
+
+    // 2. Fetch Reposts made by user
+    // Only show reposts if viewing own profile or public logic?
+    // Usually reposts on profile are visible to everyone.
+    const reposts = await prisma.repost.findMany({
+      where: { userId: id },
+      include: {
+        user: {
+          select: { id: true, name: true, username: true, image: true },
+        },
+        post: {
+          include: {
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+            likes: {
+              where: { userId: user ? (user.id as string) : "dummy" },
+              select: { userId: true },
+            },
+            repostedBy: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            originalPost: {
+              include: {
+                author: {
+                  select: { id: true, name: true, username: true, image: true },
+                },
+              },
+            },
+            _count: {
+              select: {
+                likes: true,
+                comments: true,
+                quotes: true,
+                shares: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // 3. Merge & Sort
+    const allItems = [...posts, ...reposts].sort(
+      (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+
+    // 4. Map to virtual posts
+    return allItems.map((item: any) => {
+      if (item.post) {
+        // Is Repost
+        return {
+          ...item.post,
+          id: `repost_${item.id}`,
+          createdAt: item.createdAt,
+          author: item.user, // The reposter (profile owner)
+          isRepost: true, // It is a repost
+          originalPost: item.post, // The content
+          repostedByMe: item.post.repostedBy.length > 0,
+        };
+      }
+      return {
+        ...item,
+        repostedByMe: item.repostedBy.length > 0,
+      };
     });
   })
   .get("/:id/likes", async ({ params: { id }, user }) => {
@@ -303,12 +384,26 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
             author: {
               select: { id: true, name: true, username: true, image: true },
             },
-            likes: true,
+            likes: {
+              where: { userId: user ? (user.id as string) : "dummy" },
+              select: { userId: true },
+            },
+            repostedBy: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            originalPost: {
+              include: {
+                author: {
+                  select: { id: true, name: true, username: true, image: true },
+                },
+              },
+            },
             _count: {
               select: {
                 likes: true,
                 comments: true,
-                reposts: true,
+                quotes: true,
                 shares: true,
               },
             },
@@ -317,6 +412,9 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
       orderBy: { createdAt: "desc" },
     });
-    // return likes.map((l) => l.postId);
-    return likes.map((l: any) => l.post);
+
+    return likes.map((l: any) => ({
+      ...l.post,
+      repostedByMe: l.post.repostedBy.length > 0,
+    }));
   });

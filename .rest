@@ -7,13 +7,33 @@ POST http://localhost:8080/auth/signup
 Content-Type: application/json
 
 {
-    "email": "test1@example.com",
+    "email": "grok@noble.com",
     "password": "password",
-    "name": "Test User1",
-    "username": "testuser1"
+    "name": "grok",
+    "username": "grok"
 }
 
+###
+POST http://localhost:8080/auth/signup
+Content-Type: application/json
 
+{
+    "email": "grok@noble.com",
+    "password": "password",
+    "name": "grok",
+    "username": "grok"
+}
+
+###
+POST http://localhost:8080/auth/signup
+Content-Type: application/json
+
+{
+    "email": "user2@noble.com",
+    "password": "password",
+    "name": "user2",
+    "username": "user2"
+}
 
 # {
 #     "email": "hmnn@noble.com",

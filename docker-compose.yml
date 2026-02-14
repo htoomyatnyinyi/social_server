@@ -25,9 +25,10 @@ services:
     #     ]
     #   interval: 10s
     #   timeout: 5s
-      # retries: 5
+    # retries: 5
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u oasis -p$MYSQL_PASSWORD"]
+      test:
+        ["CMD-SHELL", "mysqladmin ping -h localhost -u oasis -p$MYSQL_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -69,11 +70,11 @@ services:
   #     db:
   #       condition: service_healthy
 
-  adminer:
-    image: adminer
-    restart: always
-    ports:
-      - "9091:8080"
+  # adminer:
+  #   image: adminer
+  #   restart: always
+  #   ports:
+  #     - "9091:8080"
 
   # # Add this for Zipline
   # zipline_db:
