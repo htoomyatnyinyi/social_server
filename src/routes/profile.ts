@@ -2,17 +2,13 @@ import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
 import cloudinary from "../lib/cloudinary";
+import redis from "../lib/redis";
 
 export const profileRoutes = new Elysia({ prefix: "/profile" })
   .use(
     jwt({
       name: "jwt",
       secret: process.env.JWT_SECRET!,
-      // schema: t.Object({
-      //   id: t.String(),
-      //   username: t.String(),
-      //   email: t.String(),
-      // }),
     }),
   )
   .derive(async ({ jwt, headers }) => {
@@ -54,33 +50,46 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         image: true,
         bio: true,
       },
-      orderBy: { createdAt: "desc" }, // Simple strategy: newest users
+      orderBy: { createdAt: "desc" },
     });
 
     return suggestions;
   })
   .get("/:id", async ({ params: { id }, user }) => {
-    const profile = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        username: true,
-        email: true,
-        image: true,
-        bio: true,
-        _count: {
-          select: {
-            followers: true,
-            following: true,
-            posts: true,
+    const cacheKey = `profile:${id}`;
+
+    let profile: any = null;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      profile = JSON.parse(cached);
+    } else {
+      profile = await prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          email: true,
+          image: true,
+          bio: true,
+          _count: {
+            select: {
+              followers: true,
+              following: true,
+              posts: true,
+            },
           },
         },
-      },
-    });
+      });
+
+      if (profile) {
+        await redis.setex(cacheKey, 30, JSON.stringify(profile));
+      }
+    }
 
     if (!profile) return { message: "Profile not found" };
 
+    // isFollowing is user-specific — always fetch live
     let isFollowing = false;
     if (user) {
       const follow = await prisma.follow.findUnique({
@@ -138,6 +147,9 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       });
 
+      // Invalidate profile cache on update
+      await redis.del(`profile:${user.id}`);
+
       return updatedUser;
     },
     {
@@ -185,8 +197,6 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       return { message: "You cannot follow yourself" };
     }
 
-    console.log(`User ${followerId} toggling follow on ${followingId}`);
-
     // Safety check just in case
     const followingExists = await prisma.user.findUnique({
       where: { id: followingId },
@@ -209,6 +219,10 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       await prisma.follow.delete({
         where: { id: existingFollow.id },
       });
+      // Invalidate followers/following caches for both users
+      await redis.del(`profile:followers:${followingId}`);
+      await redis.del(`profile:following:${followerId}`);
+      await redis.del(`profile:${followingId}`);
       return { message: "Unfollowed", isFollowing: false };
     }
 
@@ -218,6 +232,11 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         followingId,
       },
     });
+
+    // Invalidate followers/following caches for both users
+    await redis.del(`profile:followers:${followingId}`);
+    await redis.del(`profile:following:${followerId}`);
+    await redis.del(`profile:${followingId}`);
 
     try {
       await prisma.notification.create({
@@ -234,6 +253,11 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
     return { message: "Followed", isFollowing: true };
   })
   .get("/:id/followers", async ({ params: { id } }) => {
+    const cacheKey = `profile:followers:${id}`;
+
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
     const followers = await prisma.follow.findMany({
       where: { followingId: id },
       include: {
@@ -248,10 +272,17 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       },
     });
-    // return followers.map((f) => f.followerId);
-    return followers.map((f: any) => f.follower);
+
+    const result = followers.map((f: any) => f.follower);
+    await redis.setex(cacheKey, 30, JSON.stringify(result));
+    return result;
   })
   .get("/:id/following", async ({ params: { id } }) => {
+    const cacheKey = `profile:following:${id}`;
+
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
     const following = await prisma.follow.findMany({
       where: { followerId: id },
       include: {
@@ -266,28 +297,50 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         },
       },
     });
-    // return following.map((f) => f.followingId);
-    return following.map((f: any) => f.following);
+
+    const result = following.map((f: any) => f.following);
+    await redis.setex(cacheKey, 30, JSON.stringify(result));
+    return result;
   })
   .get("/:id/posts", async ({ params: { id }, user }) => {
+    // Only cache public posts (when not the owner)
+    const isOwner = user && user.id === id;
+    const cacheKey = `profile:posts:${id}`;
+
+    if (!isOwner) {
+      const cached = await redis.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    }
+
     const where: any = { authorId: id };
-    if (!user || user.id !== id) {
+    if (!isOwner) {
       where.isPublic = true;
     }
 
-    return await prisma.post.findMany({
+    const posts = await prisma.post.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        content: true,
+        image: true,
+        createdAt: true,
+        authorId: true,
+        originalPostId: true,
         author: {
           select: { id: true, name: true, username: true, image: true },
         },
-        likes: true,
         _count: {
           select: { likes: true, comments: true, reposts: true, shares: true },
         },
       },
       orderBy: { createdAt: "desc" },
     });
+
+    if (!isOwner) {
+      await redis.setex(cacheKey, 30, JSON.stringify(posts));
+    }
+
+    return posts;
   })
   .get("/:id/likes", async ({ params: { id }, user }) => {
     const isOwner = user && user.id === id;
@@ -317,6 +370,5 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       },
       orderBy: { createdAt: "desc" },
     });
-    // return likes.map((l) => l.postId);
     return likes.map((l: any) => l.post);
   });

@@ -41,29 +41,42 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     return { user };
   })
   .get("/:id", async ({ params: { id }, user, set }) => {
-    const post = await prisma.post.findUnique({
-      where: { id },
-      include: {
-        author: {
-          select: { id: true, name: true, username: true, image: true },
-        },
-        likes: true,
-        bookmarks: {
-          where: { userId: user ? (user.id as string) : undefined },
-          select: { userId: true },
-        },
-        originalPost: {
-          include: {
-            author: {
-              select: { id: true, name: true, username: true, image: true },
+    let post: any = null;
+    const cacheKey = `post:${id}`;
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      post = JSON.parse(cached);
+    } else {
+      post = await prisma.post.findUnique({
+        where: { id },
+        include: {
+          author: {
+            select: { id: true, name: true, username: true, image: true },
+          },
+          likes: true,
+          originalPost: {
+            include: {
+              author: {
+                select: { id: true, name: true, username: true, image: true },
+              },
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              comments: true,
+              shares: true,
+              reposts: true,
             },
           },
         },
-        _count: {
-          select: { likes: true, comments: true, shares: true, reposts: true },
-        },
-      },
-    });
+      });
+
+      if (post) {
+        await redis.setex(cacheKey, 30, JSON.stringify(post)); // cache for 30s
+      }
+    }
 
     if (!post) {
       set.status = 404;
@@ -73,6 +86,23 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     if (!post.isPublic && (!user || post.authorId !== user.id)) {
       set.status = 403;
       return { message: "Forbidden" };
+    }
+
+    // Append user-specific data dynamically
+    post.bookmarks = [];
+    if (user) {
+      const bookmark = await prisma.bookmark.findUnique({
+        where: {
+          userId_postId: {
+            userId: user.id as string,
+            postId: id,
+          },
+        },
+        select: { userId: true },
+      });
+      if (bookmark) {
+        post.bookmarks.push(bookmark);
+      }
     }
 
     return post;
@@ -179,7 +209,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                 likes: true,
                 bookmarks: {
                   where: { userId: user ? (user.id as string) : undefined },
-                  select: { userId: true },
+                  // select: { userId: true },
                 },
                 comments: true,
                 shares: true,
@@ -202,7 +232,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     const bookmark = await prisma.bookmark.create({
       data: {
-        userId: user.id,
+        userId: user.id as string,
         postId: id,
       },
     });
@@ -218,7 +248,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     const bookmark = await prisma.bookmark.delete({
       where: {
         userId_postId: {
-          userId: user.id,
+          userId: user.id as string,
           postId: id,
         },
       },
@@ -233,6 +263,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     const take = parseInt(limit as any) || 20;
 
     let where: any = { isPublic: true };
+    const cacheKey = `posts:feed:public:${cursor || "first"}:${take}`;
 
     if (type === "private") {
       if (!user) {
@@ -240,51 +271,44 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         return { message: "Unauthorized to view private posts" };
       }
       where = { isPublic: false, authorId: user.id };
+    } else {
+      // For public posts, check Redis first
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
     }
 
     const posts = await prisma.post.findMany({
       where,
-      include: {
-        author: {
-          select: { id: true, name: true, username: true, image: true },
+      orderBy: { createdAt: "desc" },
+      take: take + 1,
+      cursor: cursor ? { id: cursor as string } : undefined,
+      skip: cursor ? 1 : 0,
+      select: {
+        id: true,
+        content: true,
+        image: true,
+        createdAt: true,
+        authorId: true, // if you need it client-side
+        originalPostId: true, // only if showing reposts inline
+        _count: {
+          select: { likes: true, comments: true, shares: true, reposts: true },
         },
-        // @ts-ignore
-        likes: {
-          where: { userId: user ? (user.id as string) : "dummy_value" },
-          select: { userId: true },
+        author: {
+          select: { id: true, username: true, name: true, image: true },
         },
         originalPost: {
-          include: {
+          select: {
+            id: true,
+            content: true,
+            image: true,
             author: {
               select: { id: true, name: true, username: true, image: true },
             },
           },
         },
-        comments: {
-          where: { parentId: null },
-          include: {
-            user: {
-              select: { id: true, name: true, username: true, image: true },
-            },
-            replies: {
-              include: {
-                user: {
-                  select: { id: true, name: true, username: true, image: true },
-                },
-              },
-            },
-          },
-          take: 3,
-        },
-        // @ts-ignore
-        _count: {
-          select: { likes: true, comments: true, shares: true, reposts: true },
-        },
       },
-      orderBy: { createdAt: "desc" },
-      take: take + 1,
-      cursor: cursor ? { id: cursor as string } : undefined,
-      skip: cursor ? 1 : 0,
     });
 
     let nextCursor: string | null = null;
@@ -293,10 +317,17 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       nextCursor = nextItem?.id || null;
     }
 
-    return {
+    const response = {
       posts,
       nextCursor,
     };
+
+    if (type !== "private") {
+      // Cache response for 15 seconds
+      await redis.setex(cacheKey, 15, JSON.stringify(response));
+    }
+
+    return response;
   })
 
   .get("/:id/comments", async ({ params: { id } }) => {

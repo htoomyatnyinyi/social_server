@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
 import { events } from "../lib/events";
+import redis from "../lib/redis";
 
 export const notificationRoutes = new Elysia({ prefix: "/notifications" })
   .use(
@@ -66,6 +67,10 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       return { message: "Unauthorized" };
     }
 
+    const cacheKey = `notif:unread:${user.id}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
     const count = await prisma.notification.count({
       where: {
         recipientId: user.id as string,
@@ -73,6 +78,7 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       },
     });
 
+    await redis.setex(cacheKey, 15, JSON.stringify({ count }));
     return { count };
   })
   .post("/read-all", async ({ user, set }) => {
@@ -86,6 +92,9 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       data: { read: true },
     });
 
+    // Invalidate unread count cache
+    await redis.del(`notif:unread:${user.id}`);
+
     return { message: "All notifications marked as read" };
   })
   .post("/:id/read", async ({ params: { id }, user, set }) => {
@@ -98,6 +107,9 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       where: { id, recipientId: user.id as string },
       data: { read: true },
     });
+
+    // Invalidate unread count cache
+    await redis.del(`notif:unread:${user.id}`);
 
     return { message: "Notification marked as read" };
   });
