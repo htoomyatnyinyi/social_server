@@ -171,6 +171,58 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
   })
 
   // ### end block user
+
+  // ### mute user
+  .post("/:id/mute", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+    if (userId === id) {
+      set.status = 400;
+      return { message: "You cannot mute yourself" };
+    }
+
+    // Toggle: if already muted, unmute
+    const existing = await prisma.mute.findUnique({
+      where: { userId_mutedId: { userId, mutedId: id } },
+    });
+
+    if (existing) {
+      await prisma.mute.delete({ where: { id: existing.id } });
+      return { message: "User unmuted", isMuted: false };
+    }
+
+    await prisma.mute.create({
+      data: { userId, mutedId: id },
+    });
+    return { message: "User muted", isMuted: true };
+  })
+
+  .delete("/:id/mute", async ({ params: { id }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    try {
+      await prisma.mute.delete({
+        where: {
+          userId_mutedId: {
+            userId: user.id as string,
+            mutedId: id,
+          },
+        },
+      });
+      return { message: "User unmuted", isMuted: false };
+    } catch (error) {
+      set.status = 404;
+      return { message: "Mute not found" };
+    }
+  })
+  // ### end mute user
   .post("/:id/follow", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
@@ -227,6 +279,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
           issuerId: followerId,
         },
       });
+      events.emit("notification", { recipientId: followingId });
     } catch (err) {
       console.error("Failed to create follow notification", err);
     }
