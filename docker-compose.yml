@@ -103,12 +103,12 @@ services:
   #   depends_on:
   #     - zipline_db
 
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    restart: always
-    command: tunnel run --token eyJhIjoiNzBjZjE3YjI1MDc5YmU3ZTFhNGU4MDkxM2RmODhiZTUiLCJ0IjoiODQ1NGU4NDEtNDA0MS00MWU0LTg0NmYtMmYxMmRkZmUzOTIyIiwicyI6IllXUmhNekZrT1RjdFpESmpOUzAwWTJFMkxXSmlZMlF0WkRSaE4yVmxOams0TW1OaSJ9
-    depends_on:
-      - api
+  # tunnel:
+  #   image: cloudflare/cloudflared:latest
+  #   restart: always
+  #   command: tunnel run --token eyJhIjoiNzBjZjE3YjI1MDc5YmU3ZTFhNGU4MDkxM2RmODhiZTUiLCJ0IjoiODQ1NGU4NDEtNDA0MS00MWU0LTg0NmYtMmYxMmRkZmUzOTIyIiwicyI6IllXUmhNekZrT1RjdFpESmpOUzAwWTJFMkxXSmlZMlF0WkRSaE4yVmxOams0TW1OaSJ9
+  #   depends_on:
+  #     - api
 
 volumes:
   mysql_data:
