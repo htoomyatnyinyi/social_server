@@ -36,6 +36,8 @@ model User {
   blocks        Block[]        @relation("Blocked")
   blockers      Block[]        @relation("Blocker")
   reposts       Repost[] // Added Repost relation
+  mutes         Mute[]         @relation("Muter")
+  mutedBy       Mute[]         @relation("Muted")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -238,4 +240,15 @@ model Block {
   createdAt DateTime @default(now())
 
   @@unique([userId, blockId])
+}
+
+model Mute {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("Muter", fields: [userId], references: [id], onDelete: Cascade)
+  mutedId   String
+  muted     User     @relation("Muted", fields: [mutedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, mutedId])
 }

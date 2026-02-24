@@ -4,6 +4,7 @@ import prisma from "../lib/prisma";
 import cloudinary from "../lib/cloudinary";
 import { generateAIResponse, moderateContent } from "../lib/ai";
 import redis from "../lib/redis";
+import { events } from "../lib/events";
 
 // Background job to sync views every 1 minute
 setInterval(async () => {
@@ -138,7 +139,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     if (followingIds.length === 0) return { posts: [], nextCursor: null };
 
-    const cursorDate = cursor ? new Date(parseInt(cursor as string)) : new Date();
+    const cursorDate = cursor
+      ? new Date(parseInt(cursor as string))
+      : new Date();
 
     // 1. Fetch Posts
     const posts = await prisma.post.findMany({
@@ -176,7 +179,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     // 3. Merge & Sort
     const allItems = [...posts, ...reposts].sort(
-      (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime()
+      (a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime(),
     );
 
     // 4. Slice
@@ -193,12 +196,12 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           author: item.user, // The reposter
           isRepost: true,
           originalPost: item.post, // Keep original post ref for frontend compatibility if needed
-          repostedByMe: item.post.repostedBy.length > 0
+          repostedByMe: item.post.repostedBy.length > 0,
         };
       }
       return {
         ...item,
-        repostedByMe: item.repostedBy.length > 0
+        repostedByMe: item.repostedBy.length > 0,
       };
     });
 
@@ -266,41 +269,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     return bookmarks.map((b: any) => b.post);
   })
 
-  .post("/:id/bookmark", async ({ params: { id }, user }) => {
-    if (!user) {
-      return { message: "Unauthorized" };
-    }
-
-    const bookmark = await prisma.bookmark.create({
-      data: {
-        userId: user.id,
-        postId: id,
-      },
-    });
-
-    return bookmark;
-  })
-
-  .delete("/:id/bookmark", async ({ params: { id }, user }) => {
-    if (!user) {
-      return { message: "Unauthorized" };
-    }
-
-    const bookmark = await prisma.bookmark.delete({
-      where: {
-        userId_postId: {
-          userId: user.id,
-          postId: id,
-        },
-      },
-    });
-
-    return bookmark;
-  })
-
   .get("/", async ({ query, user, set }) => {
     // @ts-ignore
-    const { type, cursor, limit = 20 } = query;
+    const { type, cursor, limit = 20, sort = "newest", filter = "all" } = query;
     const take = parseInt(limit as any) || 20;
 
     let where: any = { isPublic: true };
@@ -313,6 +284,100 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       where = { isPublic: false, authorId: user.id };
     }
 
+    // Exclude blocked and muted users
+    if (user) {
+      const userId = user.id as string;
+      const [blockedRecords, mutedRecords] = await Promise.all([
+        prisma.block.findMany({ where: { userId }, select: { blockId: true } }),
+        prisma.mute.findMany({ where: { userId }, select: { mutedId: true } }),
+      ]);
+      const excludeIds = [
+        ...new Set([
+          ...blockedRecords.map((b: any) => b.blockId),
+          ...mutedRecords.map((m: any) => m.mutedId),
+        ]),
+      ];
+      if (excludeIds.length > 0) {
+        where.authorId = { ...(where.authorId || {}), notIn: excludeIds };
+      }
+    }
+
+    // Media filter
+    if (filter === "media") {
+      where.image = { not: null };
+    }
+
+    // For trending sort, fetch more recent posts and score in-memory
+    if (sort === "trending" && type !== "private") {
+      const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000); // Last 48 hours
+      where.createdAt = { gte: cutoff };
+
+      const posts = await prisma.post.findMany({
+        where,
+        include: {
+          author: {
+            select: { id: true, name: true, username: true, image: true },
+          },
+          // @ts-ignore
+          likes: {
+            where: { userId: user ? (user.id as string) : "dummy_value" },
+            select: { userId: true },
+          },
+          originalPost: {
+            include: {
+              author: {
+                select: { id: true, name: true, username: true, image: true },
+              },
+            },
+          },
+          // @ts-ignore
+          _count: {
+            select: { likes: true, comments: true, shares: true, quotes: true },
+          },
+          repostedBy: {
+            where: { userId: user ? (user.id as string) : undefined },
+            select: { userId: true },
+          },
+          bookmarks: {
+            where: { userId: user ? (user.id as string) : "dummy_value" },
+            select: { userId: true },
+          },
+        },
+        take: 100, // Fetch a larger pool for scoring
+      });
+
+      // Compute trending score
+      const now = Date.now();
+      const scored = posts.map((post: any) => {
+        const ageHours =
+          (now - new Date(post.createdAt).getTime()) / (1000 * 60 * 60);
+        const engagement =
+          post._count.likes * 2 +
+          post._count.comments * 3 +
+          post._count.shares * 4 +
+          (post.views || 0) * 0.1;
+        const score = engagement / Math.pow(ageHours + 2, 1.5);
+        return { ...post, _trendingScore: score };
+      });
+
+      // Sort by score descending
+      scored.sort((a: any, b: any) => b._trendingScore - a._trendingScore);
+
+      // Paginate via cursor (use index-based for trending)
+      const cursorIndex = cursor
+        ? scored.findIndex((p: any) => p.id === cursor) + 1
+        : 0;
+      const sliced = scored.slice(cursorIndex, cursorIndex + take);
+
+      const nextCursor =
+        cursorIndex + take < scored.length
+          ? sliced[sliced.length - 1]?.id || null
+          : null;
+
+      return { posts: sliced, nextCursor };
+    }
+
+    // Default: chronological sort
     const posts = await prisma.post.findMany({
       where,
       include: {
@@ -353,6 +418,10 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         },
         repostedBy: {
           where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        bookmarks: {
+          where: { userId: user ? (user.id as string) : "dummy_value" },
           select: { userId: true },
         },
       },
@@ -402,118 +471,6 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       orderBy: { createdAt: "desc" },
     });
   })
-  // //
-  // .post(
-  //   "/",
-  //   async ({ body, user, set }) => {
-  //     if (!user) {
-  //       set.status = 401;
-  //       return { message: "Unauthorized" };
-  //     }
-
-  //     const { content, image, isPublic } = body;
-  //     // start modify
-  //     const userId = user.id as string;
-
-  //     // New: Moderate content
-  //     if (content && (await moderateContent(content))) {
-  //       set.status = 400;
-  //       return { message: "Content violates guidelines" };
-  //     }
-  //     // end
-  //     let imageUrl = null;
-
-  //     if (image && image.startsWith("data:image")) {
-  //       const uploadResponse = await cloudinary.uploader.upload(image, {
-  //         folder: "social_app/posts",
-  //       });
-  //       imageUrl = uploadResponse.secure_url;
-  //     } else if (image) {
-  //       imageUrl = image;
-  //     }
-
-  //     const post = await prisma.post.create({
-  //       data: {
-  //         content,
-  //         image: imageUrl,
-  //         isPublic: isPublic ?? true,
-  //         authorId: user.id as string,
-  //       },
-  //       include: {
-  //         author: {
-  //           select: { id: true, name: true, username: true, image: true },
-  //         },
-  //       },
-  //     });
-
-  //     // #$$$
-  //     // gemini
-  //     // Extract mentions
-  //     const mentionRegex = /@(\w+)/g;
-  //     const matches = content?.match(mentionRegex);
-  //     if (matches) {
-  //       const mentionedUsernames = [
-  //         ...new Set(matches.map((match) => match.slice(1))),
-  //       ];
-  //       const mentionedUsers = await prisma.user.findMany({
-  //         where: {
-  //           username: { in: mentionedUsernames },
-  //           NOT: { id: user.id as string },
-  //         },
-  //       });
-
-  //       await Promise.all([
-  //         ...mentionedUsers.map((mentionedUser: any) =>
-  //           prisma.notification.create({
-  //             data: {
-  //               type: "MENTION",
-  //               recipientId: mentionedUser.id,
-  //               issuerId: user.id as string,
-  //               postId: post.id,
-  //             },
-  //           }),
-  //         ),
-  //         ...mentionedUsers.map((mentionedUser: any) =>
-  //           prisma.mention.create({
-  //             data: {
-  //               postId: post.id,
-  //               userId: mentionedUser.id,
-  //             },
-  //           }),
-  //         ),
-  //       ]);
-  //     }
-  //     // Grok
-  //     // In post("/") or comment endpoint, after prisma.create
-  //     // const mentions = content.match(/@(\w+)/g) || [];
-  //     // for (const mention of mentions) {
-  //     //   const username = mention.slice(1);
-  //     //   const mentionedUser = await prisma.user.findUnique({ where: { username } });
-  //     //   if (mentionedUser && mentionedUser.id !== user.id) {
-  //     //     await prisma.notification.create({
-  //     //       data: {
-  //     //         type: "MENTION",
-  //     //         recipientId: mentionedUser.id,
-  //     //         issuerId: user.id as string,
-  //     //         postId: post.id, // or commentId
-  //     //       },
-  //     //     });
-  //     //     // Optional: Create Mention record
-  //     //     await prisma.mention.create({ data: { postId: post.id, userId: mentionedUser.id } });
-  //     //   }
-  //     // }
-  //     // $$$
-
-  //     return post;
-  //   },
-  //   {
-  //     body: t.Object({
-  //       content: t.Optional(t.String()),
-  //       image: t.Optional(t.String()),
-  //       isPublic: t.Optional(t.Boolean()),
-  //     }),
-  //   },
-  // )
   .post(
     "/",
     async ({ body, user, set }) => {
@@ -626,77 +583,6 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     },
   )
 
-  // .post(
-  //   "/:id/repost",
-  //   async ({ params: { id }, body, user, set }) => {
-  //     if (!user) {
-  //       set.status = 401;
-  //       return { message: "Unauthorized" };
-  //     }
-
-  //     const { content, image } = body;
-
-  //     const originalPost = await prisma.post.findUnique({
-  //       where: { id },
-  //     });
-
-  //     if (!originalPost) {
-  //       set.status = 404;
-  //       return { message: "Original post not found" };
-  //     }
-
-  //     let imageUrl = null;
-  //     if (image && image.startsWith("data:image")) {
-  //       const uploadResponse = await cloudinary.uploader.upload(image, {
-  //         folder: "social_app/posts",
-  //       });
-  //       imageUrl = uploadResponse.secure_url;
-  //     }
-
-  //     const repost = await prisma.post.create({
-  //       data: {
-  //         content: content || undefined,
-  //         image: imageUrl || undefined,
-  //         isRepost: true, // It is still technically a repost/quote
-  //         originalPostId: id,
-  //         authorId: user.id as string,
-  //         isPublic: true,
-  //       },
-  //       include: {
-  //         author: {
-  //           select: { id: true, name: true, username: true, image: true },
-  //         },
-  //         originalPost: {
-  //           include: {
-  //             author: {
-  //               select: { id: true, name: true, username: true, image: true },
-  //             },
-  //           },
-  //         },
-  //       },
-  //     });
-
-  //     if (originalPost.authorId !== (user.id as string)) {
-  //       await prisma.notification.create({
-  //         data: {
-  //           type: content ? "QUOTE" : "REPOST", // Differentiate for notification if needed, or just REPOST
-  //           recipientId: originalPost.authorId,
-  //           issuerId: user.id as string,
-  //           postId: originalPost.id, // Notification links to original post
-  //         },
-  //       });
-  //     }
-
-  //     return repost;
-  //   },
-  //   {
-  //     body: t.Object({
-  //       content: t.Optional(t.String()),
-  //       image: t.Optional(t.String()),
-  //     }),
-  //   },
-  // )
-
   .post(
     "/:id/repost",
     async ({ params: { id }, body, user, set }) => {
@@ -780,7 +666,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
         return { ...quote, isQuote: true };
       }
-      
+
       // IS PLAIN REPOST (Repost Record)
       else {
         // Check if already reposted
@@ -924,6 +810,8 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
           postId: id,
         },
       });
+      // events.emit('noti')
+      events.emit("notification", { recipientId: post.authorId });
     }
 
     return { message: "Liked" };
@@ -991,37 +879,25 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       return { message: "Post not found" };
     }
   })
-  // ### start
-  .post("/:id/share", async ({ params: { id }, user, set }) => {
-    if (!user) {
+  .post("/:id/report", async ({ params: { id }, user, body, set }) => {
+    if (!user || typeof user.id !== "string") {
       set.status = 401;
       return { message: "Unauthorized" };
     }
-
-    try {
-      await prisma.share.create({
-        data: {
-          postId: id,
-          userId: user.id as string,
-        },
-      });
-      return { message: "Post shared" };
-    } catch (error) {
-      set.status = 404;
-      return { message: "Post not found" };
+    const { reason } = body as { reason: string };
+    const validReasons = ["SPAM", "HATE_SPEECH", "HARASSMENT", "OTHER"];
+    if (!reason || !validReasons.includes(reason)) {
+      set.status = 400;
+      return {
+        message: `Reason is required and must be one of: ${validReasons.join(", ")}`,
+      };
     }
-  })
-  .post("/:id/report", async ({ params: { id }, user, set }) => {
-    if (!user) {
-      set.status = 401;
-      return { message: "Unauthorized" };
-    }
-
     try {
       await prisma.report.create({
         data: {
           postId: id,
-          userId: user.id as string,
+          userId: user.id,
+          reason: reason as any,
         },
       });
       return { message: "Post reported" };
@@ -1030,26 +906,29 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       return { message: "Post not found" };
     }
   })
-  .post("/:id/block", async ({ params: { id }, user, set }) => {
-    if (!user) {
+  .post("/:id/block", async ({ params: { id }, user, body, set }) => {
+    if (!user || typeof user.id !== "string") {
       set.status = 401;
       return { message: "Unauthorized" };
     }
-
+    const { blockId } = body as { blockId: string };
+    if (!blockId || typeof blockId !== "string") {
+      set.status = 400;
+      return { message: "blockId (user to block) is required" };
+    }
     try {
       await prisma.block.create({
         data: {
-          postId: id,
-          userId: user.id as string,
+          userId: user.id,
+          blockId,
         },
       });
-      return { message: "Post blocked" };
+      return { message: "User blocked" };
     } catch (error) {
       set.status = 404;
-      return { message: "Post not found" };
+      return { message: "User not found or already blocked" };
     }
   })
-  // ### end
   .delete("/:id", async ({ params: { id }, user, set }) => {
     if (!user) {
       set.status = 401;
@@ -1078,108 +957,6 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
 
     return { message: "top post deleted" };
   })
-  // .post(
-  //   "/:id/comment",
-  //   async ({ params: { id }, body, user, set }) => {
-  //     if (!user) {
-  //       set.status = 401;
-  //       return { message: "Unauthorized" };
-  //     }
-
-  //     const { content, parentId } = body;
-
-  //     const comment = await prisma.comment.create({
-  //       data: {
-  //         content,
-  //         userId: user.id as string,
-  //         postId: id,
-  //         parentId: parentId || null,
-  //       },
-  //       include: {
-  //         user: {
-  //           select: { id: true, name: true, username: true, image: true },
-  //         },
-  //         post: { select: { authorId: true } },
-  //         parent: { select: { userId: true } },
-  //       },
-  //     });
-
-  //     const currentUserId = user.id as string;
-
-  //     // Notify post author
-  //     if (comment.post.authorId !== currentUserId) {
-  //       await prisma.notification.create({
-  //         data: {
-  //           type: "COMMENT",
-  //           recipientId: comment.post.authorId,
-  //           issuerId: currentUserId,
-  //           postId: id,
-  //           commentId: comment.id,
-  //         },
-  //       });
-  //     }
-
-  //     // Notify parent comment author if it's a reply
-  //     if (comment.parent && comment.parent.userId !== currentUserId) {
-  //       await prisma.notification.create({
-  //         data: {
-  //           type: "REPLY",
-  //           recipientId: comment.parent.userId,
-  //           issuerId: currentUserId,
-  //           postId: id,
-  //           commentId: comment.id,
-  //         },
-  //       });
-  //     }
-
-  //     // Handle mentions in comments
-  //     const mentionRegex = /@(\w+)/g;
-  //     const matches = content?.match(mentionRegex);
-  //     if (matches) {
-  //       const mentionedUsernames = [
-  //         ...new Set(matches.map((match) => match.slice(1))),
-  //       ];
-  //       const mentionedUsers = await prisma.user.findMany({
-  //         where: {
-  //           username: { in: mentionedUsernames },
-  //           NOT: { id: currentUserId },
-  //         },
-  //       });
-
-  //       await Promise.all([
-  //         ...mentionedUsers.map((mentionedUser: any) =>
-  //           prisma.notification.create({
-  //             data: {
-  //               type: "MENTION",
-  //               recipientId: mentionedUser.id,
-  //               issuerId: currentUserId,
-  //               postId: id,
-  //               commentId: comment.id,
-  //             },
-  //           }),
-  //         ),
-  //         ...mentionedUsers.map((mentionedUser: any) =>
-  //           prisma.mention.create({
-  //             data: {
-  //               postId: id,
-  //               commentId: comment.id,
-  //               userId: mentionedUser.id,
-  //             },
-  //           }),
-  //         ),
-  //       ]);
-  //     }
-
-  //     return comment;
-  //   },
-  //   {
-  //     body: t.Object({
-  //       content: t.String(),
-  //       parentId: t.Optional(t.String()),
-  //     }),
-  //   },
-  // );
-
   .post(
     "/:id/comment",
     async ({ params: { id }, body, user, set }) => {
@@ -1195,6 +972,25 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       if (await moderateContent(content)) {
         set.status = 400;
         return { message: "Content violates guidelines" };
+      }
+
+      // Restrict replies to only one level deep
+      if (parentId) {
+        const parentComment = await prisma.comment.findUnique({
+          where: { id: parentId },
+          select: { parentId: true },
+        });
+        if (!parentComment) {
+          set.status = 404;
+          return { message: "Parent comment not found" };
+        }
+        if (parentComment.parentId) {
+          set.status = 400;
+          return {
+            message:
+              "Cannot reply to a reply. Only one level of replies allowed.",
+          };
+        }
       }
 
       const comment = await prisma.comment.create({
