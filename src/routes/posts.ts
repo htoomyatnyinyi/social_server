@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
-import cloudinary from "../lib/cloudinary";
+import { uploadToZipline } from "../lib/zipline";
 import { generateAIResponse, moderateContent } from "../lib/ai";
 import redis from "../lib/redis";
 import { events } from "../lib/events";
@@ -491,10 +491,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       let imageUrl = null;
 
       if (image && image.startsWith("data:image")) {
-        const uploadResponse = await cloudinary.uploader.upload(image, {
-          folder: "social_app/posts",
-        });
-        imageUrl = uploadResponse.secure_url;
+        imageUrl = await uploadToZipline(image, "posts");
       } else if (image) {
         imageUrl = image;
       }
@@ -613,10 +610,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       if (content || image) {
         let imageUrl = null;
         if (image && image.startsWith("data:image")) {
-          const uploadResponse = await cloudinary.uploader.upload(image, {
-            folder: "social_app/posts",
-          });
-          imageUrl = uploadResponse.secure_url;
+          imageUrl = await uploadToZipline(image, "posts");
         }
 
         const quote = await prisma.post.create({
