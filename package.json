@@ -17,7 +17,6 @@
     "@prisma/client": "^7.4.2",
     "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
-    "cloudinary": "^2.9.0",
     "elysia": "^1.4.27",
     "ioredis": "^5.10.0",
     "mariadb": "^3.5.1",

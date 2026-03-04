@@ -1,0 +1,103 @@
+services:
+  # ────────────────────────────────────────────────
+  # Zipline Database
+  zipline_db:
+    image: postgres:16-alpine
+    restart: always
+    env_file:
+      - .env.zipline
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zipline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zipline_strong_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-zipline}
+    volumes:
+      - zipline_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "${POSTGRES_USER:-zipline}",
+          "-d",
+          "${POSTGRES_DB:-zipline}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - social-network
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    env_file:
+      - .env.zipline
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_password}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - social-network
+
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    env_file:
+      - .env.zipline
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb local/ziplinebucket --ignore-existing &&
+      mc anonymous set download local/ziplinebucket &&
+      echo 'Bucket ready'
+      "
+    restart: "no"
+    networks:
+      - social-network
+
+  zipline:
+    image: ghcr.io/diced/zipline:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.zipline
+    # These will be picked up from .env.zipline if they match the keys in that file
+    # Or you can map them explicitly:
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CORE_SECRET: ${CORE_SECRET}
+    volumes:
+      - ../zipline_data:/app/data
+    depends_on:
+      zipline_db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+    networks:
+      - social-network
+
+volumes:
+  zipline_pgdata:
+  minio_data:
+
+networks:
+  social-network:
+    external: true
+    name: social-network

@@ -37,4 +37,5 @@ COPY . .
 EXPOSE 8080
 
 # Start server
-CMD ["bun", "src/index.ts"]
+# CMD ["bun", "src/index.ts"]
+CMD ["sh", "-c", "bunx prisma db push && bun run src/index.ts"]

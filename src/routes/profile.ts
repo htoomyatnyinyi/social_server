@@ -1,7 +1,8 @@
 import { Elysia, t } from "elysia";
 import { jwt } from "@elysiajs/jwt";
 import prisma from "../lib/prisma";
-import cloudinary from "../lib/cloudinary";
+import { uploadToZipline } from "../lib/zipline";
+import { events } from "../lib/events";
 
 export const profileRoutes = new Elysia({ prefix: "/profile" })
   .use(
@@ -122,10 +123,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
       }
 
       if (image && image.startsWith("data:image")) {
-        const uploadResponse = await cloudinary.uploader.upload(image, {
-          folder: "social_app/profiles",
-        });
-        imageUrl = uploadResponse.secure_url;
+        imageUrl = await uploadToZipline(image, "profiles");
       }
 
       const updatedUser = await prisma.user.update({
