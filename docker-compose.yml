@@ -52,7 +52,7 @@ services:
     env_file:
       - .env
     environment:
-      OLLAMA_URL: http://ollama:11434/api/chat
+      OLLAMA_URL: http://ollama:11434/api/generate
     depends_on:
       social_db:
         condition: service_healthy

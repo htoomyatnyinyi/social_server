@@ -29,41 +29,28 @@ interface OllamaGenerateResponse {
 // }
 
 async function callOllama(prompt: string): Promise<string> {
-  const requestBody = {
-    model: MODEL,
-    messages: [
-      {
-        role: "user",
-        content: prompt,
+  const { data } = await axios.post(
+    "http://ollama:11434/api/generate",
+    {
+      model: MODEL,
+      prompt,
+      stream: false,
+      think: false,
+      options: {
+        num_predict: 256,
+        temperature: 0,
+        // num_ctx: 2048,
       },
-    ],
-    stream: false,
-  };
+    },
+    { timeout: 60000 },
+  );
 
-  const { data } = await axios.post(OLLAMA_URL, requestBody, {
-    timeout: 120_0000,
-  });
-
-  // If model just loaded, retry once
-  if (data?.done_reason === "load") {
-    const retry = await axios.post(OLLAMA_URL, requestBody, {
-      timeout: 120_0000,
-    });
-
-    if (!retry.data?.message?.content) {
-      console.error("Retry response:", retry.data);
-      throw new Error("Empty response after model load");
-    }
-
-    return retry.data.message.content.trim();
-  }
-
-  if (!data?.message?.content) {
+  if (!data?.response) {
     console.error("Raw Ollama response:", data);
-    throw new Error("Invalid Ollama response format");
+    throw new Error("Empty Ollama response");
   }
 
-  return data.message.content.trim();
+  return data.response.trim();
 }
 
 export async function moderateContent(content: string): Promise<boolean> {
