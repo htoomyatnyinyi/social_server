@@ -1,11 +1,145 @@
-# Docker Compose Modular Services
-# Run: docker compose up -d (starts both sub-projects)
+services:
+  # ────────────────────────────────────────────────
+  # PostgreSQL for SOCIAL APP
+  social_db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: oasis
+      POSTGRES_PASSWORD: oasis_password_change_me_please
+      POSTGRES_DB: social_db # Matches DATABASE_URL
+    ports:
+      - "5432:5432"
+    volumes:
+      - social_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # FIX: Added -d social_db so pg_isready pings the right database
+      test: ["CMD", "pg_isready", "-U", "oasis", "-d", "social_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-include:
-  - path: social-app/docker-compose.yml
-  - path: zipline/docker-compose.yml
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
 
-networks:
-  social-network:
-    name: social-network
-    driver: bridge
+  api:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    # Note: DATABASE_URL in .env will be used. Ensure it matches social_db service name.
+    depends_on:
+      social_db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      zipline:
+        condition: service_started
+
+  # ────────────────────────────────────────────────
+  # Zipline Database
+  zipline_db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: zipline
+      POSTGRES_PASSWORD: zipline_strong_password_change_me
+      POSTGRES_DB: zipline
+    volumes:
+      - zipline_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "zipline", "-d", "zipline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin_change_me
+      MINIO_ROOT_PASSWORD: very_long_minio_password_change_me_1234567890
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb local/ziplinebucket --ignore-existing &&
+      mc anonymous set download local/ziplinebucket &&
+      echo 'Bucket ready'
+      "
+    environment:
+      MINIO_ROOT_USER: minioadmin_change_me
+      MINIO_ROOT_PASSWORD: very_long_minio_password_change_me_1234567890
+    restart: "no"
+
+  zipline:
+    image: ghcr.io/diced/zipline:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      CORE_SECRET: change_this_to_a_very_long_random_string_64_chars_plus
+      CORE_RETURN_ORIGINAL: "1"
+      DATABASE_URL: postgresql://zipline:zipline_strong_password_change_me@zipline_db:5432/zipline
+      REDIS_URL: redis://redis:6379 # add on by me if not effective can be remove
+      DATASOURCE_TYPE: s3
+      DATASOURCE_S3_ENDPOINT: http://minio:9000
+      DATASOURCE_S3_ACCESS_KEY_ID: minioadmin_change_me
+      DATASOURCE_S3_SECRET_ACCESS_KEY: very_long_minio_password_change_me_1234567890
+      DATASOURCE_S3_BUCKET: ziplinebucket
+      DATASOURCE_S3_FORCE_PATH_STYLE: "true"
+      DATASOURCE_S3_REGION: us-east-1
+      DATASOURCE_S3_USE_SSL: "false"
+    volumes:
+      - ./zipline_data:/app/data
+    depends_on:
+      zipline_db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+
+volumes:
+  social_pgdata:
+  zipline_pgdata:
+  minio_data:
+
+# SEPARATE VERSION
+#
+#
+#
+#
+#
+# # Docker Compose Modular Services
+# # Run: docker compose up -d (starts both sub-projects)
+
+# include:
+#   - path: social-app/docker-compose.yml
+#   - path: zipline/docker-compose.yml
+
+# networks:
+#   social-network:
+#     name: social-network
+#     driver: bridge
