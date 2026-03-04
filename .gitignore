@@ -57,3 +57,4 @@ zipline/.env.zipline
 # .env.*
 # !.env.example
 
+social-app/.env.social
