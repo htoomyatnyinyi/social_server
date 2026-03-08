@@ -14,7 +14,11 @@ model User {
   password         String?
   name             String?
   image            String?
+  coverImage       String?
   bio              String?
+  location         String?
+  website          String?
+  dob              DateTime?
   googleId         String?   @unique
   isVerified       Boolean   @default(false)
   lastSeen         DateTime  @default(now())

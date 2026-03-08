@@ -69,7 +69,11 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         username: true,
         email: true,
         image: true,
+        coverImage: true,
         bio: true,
+        location: true,
+        website: true,
+        dob: true,
         _count: {
           select: {
             followers: true,
@@ -105,8 +109,9 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         return { message: "Unauthorized" };
       }
 
-      const { name, bio, image, username } = body;
+      const { name, bio, image, coverImage, username, location, website, dob } = body;
       let imageUrl = image;
+      let coverImageUrl = coverImage;
 
       if (username) {
         const existingUser = await prisma.user.findFirst({
@@ -126,6 +131,10 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         imageUrl = await uploadToZipline(image, "profiles");
       }
 
+      if (coverImage && coverImage.startsWith("data:image")) {
+        coverImageUrl = await uploadToZipline(coverImage, "covers");
+      }
+
       const updatedUser = await prisma.user.update({
         where: { id: user.id as string },
         data: {
@@ -133,6 +142,10 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
           bio,
           username,
           image: imageUrl,
+          coverImage: coverImageUrl,
+          location,
+          website,
+          dob: (dob && dob.trim()) ? new Date(dob) : (dob === "" ? null : undefined),
         },
       });
 
@@ -143,7 +156,11 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         name: t.Optional(t.String()),
         bio: t.Optional(t.String()),
         image: t.Optional(t.String()),
+        coverImage: t.Optional(t.String()),
         username: t.Optional(t.String()),
+        location: t.Optional(t.String()),
+        website: t.Optional(t.String()),
+        dob: t.Optional(t.String()),
       }),
     },
   )
