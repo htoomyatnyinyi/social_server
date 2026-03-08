@@ -10,6 +10,40 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       secret: process.env.JWT_SECRET!,
     }),
   )
+  .ws("/ws", {
+    query: t.Object({
+      token: t.String(),
+    }),
+    async open(ws) {
+      const { token } = ws.data.query;
+      console.log(`📡 Notification WS: Attempting connection with token (len: ${token?.length})`);
+      
+      try {
+        const context = ws.data as any;
+        if (!context.jwt) {
+          console.error("❌ Notification WS: jwt plugin context missing!");
+          ws.close();
+          return;
+        }
+
+        const payload = await context.jwt.verify(token);
+        if (payload && payload.id) {
+          const userId = payload.id;
+          ws.subscribe(`user:${userId}`);
+          console.log(`✅ Notification WS: Subscribed user ${userId} to topic: user:${userId}`);
+        } else {
+          console.error("❌ Notification WS: Invalid token payload — closing");
+          ws.close();
+        }
+      } catch (err) {
+        console.error("❌ Notification WS: Verification error", err);
+        ws.close();
+      }
+    },
+    close(ws) {
+      console.log("🔌 Notification WS: Connection closed");
+    },
+  })
   .derive(async ({ jwt, headers }) => {
     const auth = headers["authorization"];
     if (!auth || !auth.startsWith("Bearer ")) return { user: null };
@@ -18,26 +52,6 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
     const user = await jwt.verify(token);
 
     return { user };
-  })
-  .ws("/ws", {
-    query: t.Object({
-      token: t.String(),
-    }),
-    async open(ws) {
-      const { token } = ws.data.query;
-      try {
-        const payload = await (ws.data as any).jwt.verify(token);
-        if (payload && payload.id) {
-          const userId = payload.id;
-          ws.subscribe(`user:${userId}`);
-          console.log(`Subscribed WS to topic: user:${userId}`);
-        } else {
-          ws.close();
-        }
-      } catch (err) {
-        ws.close();
-      }
-    },
   })
   .get("/", async ({ user, set }) => {
     if (!user) {
@@ -94,10 +108,31 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       return { message: "Unauthorized" };
     }
 
-    await prisma.notification.update({
-      where: { id, recipientId: user.id as string },
+    const userId = user.id as string;
+
+    // First find the notification to know its grouped attributes
+    const notif = await prisma.notification.findUnique({
+      where: { id, recipientId: userId },
+    });
+
+    if (!notif) {
+      set.status = 404;
+      return { message: "Notification not found" };
+    }
+
+    // Instead of just marking ONE read, mark ALL notifications that match this "Group" as read
+    // This supports the collapsed UI logic: same type, same issuer, same target entity
+    await prisma.notification.updateMany({
+      where: {
+        recipientId: userId,
+        type: notif.type,
+        issuerId: notif.issuerId,
+        postId: notif.postId,
+        commentId: notif.commentId,
+        read: false, // Only update unread
+      },
       data: { read: true },
     });
 
-    return { message: "Notification marked as read" };
+    return { message: "Notification group marked as read" };
   });

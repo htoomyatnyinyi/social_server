@@ -18,18 +18,6 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       secret: process.env.JWT_SECRET!,
     })
   )
-  .derive(async ({ jwt, headers }) => {
-    const auth = headers["authorization"];
-    if (!auth || !auth.startsWith("Bearer ")) return { user: null };
-
-    const token = auth.split(" ")[1];
-    const user = await jwt.verify(token);
-
-    return {
-      user,
-    };
-  })
-
   // ---------------------------------------------------------------------------
   // WEBSOCKET HANDLER
   // ---------------------------------------------------------------------------
@@ -46,16 +34,24 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     }),
     async open(ws) {
       const { chatId, token } = ws.data.query;
+      console.log(`📡 Chat WS: Opening for room ${chatId} (token present: ${!!token})`);
 
       // 1. Authenticate and attach User ID to the WebSocket instance
       if (token) {
         try {
-          const payload = await (ws.data as any).jwt.verify(token);
+          const context = ws.data as any;
+          if (!context.jwt) {
+            console.error("❌ Chat WS: jwt plugin context missing!");
+            ws.close();
+            return;
+          }
+          const payload = await context.jwt.verify(token);
           if (payload) {
             (ws.data as any).userId = payload.id;
+            console.log(`✅ Chat WS: Authenticated user ${payload.id}`);
           }
         } catch (error) {
-          console.error("JWT verification failed:", error);
+          console.error("❌ Chat WS: Verification failed:", error);
         }
       }
 
@@ -68,7 +64,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       });
 
       if (!chat) {
-        console.error(`Chat room not found: ${chatId}`);
+        console.error(`❌ Chat WS: Room not found: ${chatId}`);
         ws.close();
         return;
       }
@@ -77,9 +73,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
       if (!chat.isPublic && userId) {
         const isParticipant = chat.users.some((u: any) => u.id === userId);
         if (!isParticipant) {
-          console.error(
-            `User ${userId} is not a participant of chat ${chatId}`
-          );
+          console.error(`❌ Chat WS: User ${userId} unauthorized for room ${chatId}`);
           ws.close();
           return;
         }
@@ -87,7 +81,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
 
       // 4. Subscribe to Channels
       ws.subscribe(chatId);
-      console.log(`Connection opened for chat: ${chatId}`);
+      console.log(`✅ Chat WS: Subscribed to room ${chatId}`);
 
       // 5. Update Global State
       if (userId) {
@@ -104,6 +98,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     close(ws) {
       const userId = (ws.data as any).userId;
       const { chatId } = ws.data.query;
+      console.log(`🔌 Chat WS: Closed for room ${chatId} (user ${userId || "anon"})`);
 
       if (userId) {
         updateUserStatus(userId);
@@ -180,6 +175,17 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         console.error("Error saving/sending message:", error);
       }
     },
+  })
+  .derive(async ({ jwt, headers }) => {
+    const auth = headers["authorization"];
+    if (!auth || !auth.startsWith("Bearer ")) return { user: null };
+
+    const token = auth.split(" ")[1];
+    const user = await jwt.verify(token);
+
+    return {
+      user,
+    };
   })
 
   // ---------------------------------------------------------------------------

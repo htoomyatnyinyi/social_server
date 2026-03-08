@@ -14,13 +14,19 @@ model User {
   password         String?
   name             String?
   image            String?
+  coverImage       String?
   bio              String?
+  location         String?
+  website          String?
+  dob              DateTime?
   googleId         String?   @unique
   isVerified       Boolean   @default(false)
   lastSeen         DateTime  @default(now())
   posts            Post[]
   likes            Like[]
   comments         Comment[]
+  commentLikes     CommentLike[]
+  commentReposts   CommentRepost[]
   shares           Share[]
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
@@ -153,6 +159,11 @@ model Comment {
   parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   replies  Comment[] @relation("CommentReplies")
 
+  commentLikes   CommentLike[]
+  commentReposts CommentRepost[]
+
+  views Int @default(0)
+
   notifications Notification[]
   mentions      Mention[]
 
@@ -167,6 +178,28 @@ model Share {
   postId    String
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+model CommentLike {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commentId])
+}
+
+model CommentRepost {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commentId])
 }
 
 model Chat {

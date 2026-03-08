@@ -443,15 +443,41 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     };
   })
 
-  .get("/:id/comments", async ({ params: { id } }) => {
+  .get("/:id/comments", async ({ params: { id }, user }) => {
     return await prisma.comment.findMany({
       where: { postId: id, parentId: null },
       include: {
         user: { select: { id: true, name: true, username: true, image: true } },
+        commentLikes: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        commentReposts: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        _count: {
+          select: { commentLikes: true, commentReposts: true, replies: true },
+        },
         replies: {
           include: {
             user: {
               select: { id: true, name: true, username: true, image: true },
+            },
+            commentLikes: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            commentReposts: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            _count: {
+              select: {
+                commentLikes: true,
+                commentReposts: true,
+                replies: true,
+              },
             },
           },
         },
@@ -539,6 +565,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                     postId: post.id,
                   },
                 });
+                events.emit("notification", { recipientId: mentionedUser.id });
 
                 // Special: @grok
                 if (username === "grok") {
@@ -652,6 +679,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                   postId: originalPost.id,
                 },
               });
+              events.emit("notification", {
+                recipientId: originalPost.authorId,
+              });
             } catch (error) {
               console.error("Background quote notification error:", error);
             }
@@ -674,8 +704,21 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         });
 
         if (existingRepost) {
-          set.status = 400;
-          return { message: "Already reposted" };
+          await prisma.repost.delete({
+            where: {
+              userId_postId: {
+                userId,
+                postId: id,
+              },
+            },
+          });
+
+          await prisma.post.update({
+            where: { id },
+            data: { repostsCount: { decrement: 1 } },
+          });
+
+          return { message: "Repost removed", isQuote: false };
         }
 
         const repost = await prisma.repost.create({
@@ -701,6 +744,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                   issuerId: userId,
                   postId: originalPost.id,
                 },
+              });
+              events.emit("notification", {
+                recipientId: originalPost.authorId,
               });
             } catch (error) {
               console.error("Background repost notification error:", error);
@@ -968,24 +1014,36 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         return { message: "Content violates guidelines" };
       }
 
-      // Restrict replies to only one level deep
+      // Verify parent comment exists
       if (parentId) {
         const parentComment = await prisma.comment.findUnique({
           where: { id: parentId },
-          select: { parentId: true },
+          select: { id: true },
         });
         if (!parentComment) {
           set.status = 404;
           return { message: "Parent comment not found" };
         }
-        if (parentComment.parentId) {
-          set.status = 400;
-          return {
-            message:
-              "Cannot reply to a reply. Only one level of replies allowed.",
-          };
-        }
       }
+
+      //  // Restrict replies to only one level deep, replace with above code
+      // if (parentId) {
+      //   const parentComment = await prisma.comment.findUnique({
+      //     where: { id: parentId },
+      //     select: { parentId: true },
+      //   });
+      //   if (!parentComment) {
+      //     set.status = 404;
+      //     return { message: "Parent comment not found" };
+      //   }
+      //   if (parentComment.parentId) {
+      //     set.status = 400;
+      //     return {
+      //       message:
+      //         "Cannot reply to a reply. Only one level of replies allowed.",
+      //     };
+      //   }
+      // }
 
       const comment = await prisma.comment.create({
         data: {
@@ -1018,6 +1076,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                 commentId: comment.id,
               },
             });
+            events.emit("notification", { recipientId: comment.post.authorId });
           }
 
           if (comment.parent && comment.parent.userId !== currentUserId) {
@@ -1030,6 +1089,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                 commentId: comment.id,
               },
             });
+            events.emit("notification", { recipientId: comment.parent.userId });
           }
 
           // Parse mentions in comment
@@ -1059,6 +1119,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                   commentId: comment.id,
                 },
               });
+              events.emit("notification", { recipientId: mentionedUser.id });
 
               // Special: @grok
               if (username === "grok") {
@@ -1100,5 +1161,219 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         content: t.String(),
         parentId: t.Optional(t.String()),
       }),
+    },
+  )
+  .get("/comment/:commentId", async ({ params: { commentId }, user, set }) => {
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      include: {
+        user: { select: { id: true, name: true, username: true, image: true } },
+        post: {
+          select: {
+            id: true,
+            author: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+          },
+        },
+        parent: {
+          include: {
+            user: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+          },
+        },
+        replies: {
+          include: {
+            user: {
+              select: { id: true, name: true, username: true, image: true },
+            },
+            commentLikes: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            commentReposts: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            _count: {
+              select: {
+                commentLikes: true,
+                commentReposts: true,
+                replies: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        commentLikes: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        commentReposts: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        _count: {
+          select: { commentLikes: true, commentReposts: true, replies: true },
+        },
+      },
+    });
+
+    if (!comment) {
+      set.status = 404;
+      return { message: "Comment not found" };
+    }
+
+    return comment;
+  })
+  .post(
+    "/:id/comment/:commentId/like",
+    async ({ params: { commentId }, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const userId = user.id as string;
+
+      const existingLike = await prisma.commentLike.findUnique({
+        where: {
+          userId_commentId: {
+            userId,
+            commentId,
+          },
+        },
+      });
+
+      if (existingLike) {
+        await prisma.commentLike.delete({
+          where: { id: existingLike.id },
+        });
+        return { message: "Comment unliked" };
+      }
+
+      await prisma.commentLike.create({
+        data: {
+          userId,
+          commentId,
+        },
+      });
+
+      const comment = await prisma.comment.findUnique({
+        where: { id: commentId },
+        select: { userId: true, postId: true },
+      });
+
+      if (comment && comment.userId !== userId) {
+        await prisma.notification.create({
+          data: {
+            type: "LIKE",
+            recipientId: comment.userId,
+            issuerId: userId,
+            commentId,
+          },
+        });
+        events.emit("notification", { recipientId: comment.userId });
+      }
+
+      return { message: "Comment liked" };
+    },
+  )
+  .post(
+    "/:id/comment/:commentId/repost",
+    async ({ params: { commentId }, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const userId = user.id as string;
+
+      const existingRepost = await prisma.commentRepost.findUnique({
+        where: {
+          userId_commentId: {
+            userId,
+            commentId,
+          },
+        },
+      });
+
+      if (existingRepost) {
+        await prisma.commentRepost.delete({
+          where: { id: existingRepost.id },
+        });
+        return { message: "Comment unreposted" };
+      }
+
+      await prisma.commentRepost.create({
+        data: {
+          userId,
+          commentId,
+        },
+      });
+
+      const comment = await prisma.comment.findUnique({
+        where: { id: commentId },
+        select: { userId: true },
+      });
+
+      if (comment && comment.userId !== userId) {
+        await prisma.notification.create({
+          data: {
+            type: "REPOST",
+            recipientId: comment.userId,
+            issuerId: userId,
+            commentId,
+          },
+        });
+        events.emit("notification", { recipientId: comment.userId });
+      }
+
+      return { message: "Comment reposted" };
+    },
+  )
+  .post(
+    "/:id/comment/:commentId/view",
+    async ({ params: { commentId }, set }) => {
+      try {
+        await prisma.comment.update({
+          where: { id: commentId },
+          data: { views: { increment: 1 } },
+        });
+        return { message: "Comment view incremented" };
+      } catch (error) {
+        set.status = 500;
+        return { message: "Failed to increment comment views" };
+      }
+    },
+  )
+  .delete(
+    "/:id/comment/:commentId",
+    async ({ params: { commentId }, user, set }) => {
+      if (!user) {
+        set.status = 401;
+        return { message: "Unauthorized" };
+      }
+
+      const comment = await prisma.comment.findUnique({
+        where: { id: commentId },
+      });
+
+      if (!comment) {
+        set.status = 404;
+        return { message: "Comment not found" };
+      }
+
+      if (comment.userId !== (user.id as string)) {
+        set.status = 403;
+        return { message: "Forbidden" };
+      }
+
+      await prisma.comment.delete({
+        where: { id: commentId },
+      });
+
+      return { message: "Comment deleted" };
     },
   );
