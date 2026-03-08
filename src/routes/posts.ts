@@ -704,8 +704,21 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         });
 
         if (existingRepost) {
-          set.status = 400;
-          return { message: "Already reposted" };
+          await prisma.repost.delete({
+            where: {
+              userId_postId: {
+                userId,
+                postId: id,
+              },
+            },
+          });
+
+          await prisma.post.update({
+            where: { id },
+            data: { repostsCount: { decrement: 1 } },
+          });
+
+          return { message: "Repost removed", isQuote: false };
         }
 
         const repost = await prisma.repost.create({
@@ -1318,6 +1331,21 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
       }
 
       return { message: "Comment reposted" };
+    },
+  )
+  .post(
+    "/:id/comment/:commentId/view",
+    async ({ params: { commentId }, set }) => {
+      try {
+        await prisma.comment.update({
+          where: { id: commentId },
+          data: { views: { increment: 1 } },
+        });
+        return { message: "Comment view incremented" };
+      } catch (error) {
+        set.status = 500;
+        return { message: "Failed to increment comment views" };
+      }
     },
   )
   .delete(

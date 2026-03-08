@@ -158,6 +158,8 @@ model Comment {
   commentLikes   CommentLike[]
   commentReposts CommentRepost[]
 
+  views Int @default(0)
+
   notifications Notification[]
   mentions      Mention[]
 
