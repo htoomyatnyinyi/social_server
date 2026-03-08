@@ -135,7 +135,7 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
         coverImageUrl = await uploadToZipline(coverImage, "covers");
       }
 
-      const updatedUser = await prisma.user.update({
+      await prisma.user.update({
         where: { id: user.id as string },
         data: {
           name,
@@ -146,6 +146,29 @@ export const profileRoutes = new Elysia({ prefix: "/profile" })
           location,
           website,
           dob: (dob && dob.trim()) ? new Date(dob) : (dob === "" ? null : undefined),
+        },
+      });
+
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: user.id as string },
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          email: true,
+          image: true,
+          coverImage: true,
+          bio: true,
+          location: true,
+          website: true,
+          dob: true,
+          _count: {
+            select: {
+              followers: true,
+              following: true,
+              posts: true,
+            },
+          },
         },
       });
 
