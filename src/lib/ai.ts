@@ -42,7 +42,7 @@ async function callOllama(prompt: string): Promise<string> {
         top_k: 10,
         top_p: 0.9,
         seed: 42,
-        stop: ["\n"],
+        // stop: ["\n"],
         repeat_penalty: 1.1,
         // num_ctx: 2048,
       },
@@ -61,12 +61,10 @@ async function callOllama(prompt: string): Promise<string> {
 export async function moderateContent(content: string): Promise<boolean> {
   try {
     const prompt = `
-Respond ONLY with "Yes" if the content is harmful.
-Respond ONLY with "No" if the content is safe.
-
-Content:
-${content}
-`;
+            Respond ONLY with "Yes" if the content is harmful.
+            Respond ONLY with "No" if the content is safe.
+            Content: ${content}
+    `;
 
     const result = await callOllama(prompt);
     return result.toLowerCase().startsWith("yes");

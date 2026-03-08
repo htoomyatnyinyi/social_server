@@ -94,10 +94,31 @@ export const notificationRoutes = new Elysia({ prefix: "/notifications" })
       return { message: "Unauthorized" };
     }
 
-    await prisma.notification.update({
-      where: { id, recipientId: user.id as string },
+    const userId = user.id as string;
+
+    // First find the notification to know its grouped attributes
+    const notif = await prisma.notification.findUnique({
+      where: { id, recipientId: userId },
+    });
+
+    if (!notif) {
+      set.status = 404;
+      return { message: "Notification not found" };
+    }
+
+    // Instead of just marking ONE read, mark ALL notifications that match this "Group" as read
+    // This supports the collapsed UI logic: same type, same issuer, same target entity
+    await prisma.notification.updateMany({
+      where: {
+        recipientId: userId,
+        type: notif.type,
+        issuerId: notif.issuerId,
+        postId: notif.postId,
+        commentId: notif.commentId,
+        read: false, // Only update unread
+      },
       data: { read: true },
     });
 
-    return { message: "Notification marked as read" };
+    return { message: "Notification group marked as read" };
   });

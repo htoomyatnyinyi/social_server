@@ -539,6 +539,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                     postId: post.id,
                   },
                 });
+                events.emit("notification", { recipientId: mentionedUser.id });
 
                 // Special: @grok
                 if (username === "grok") {
@@ -652,6 +653,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                   postId: originalPost.id,
                 },
               });
+              events.emit("notification", {
+                recipientId: originalPost.authorId,
+              });
             } catch (error) {
               console.error("Background quote notification error:", error);
             }
@@ -701,6 +705,9 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                   issuerId: userId,
                   postId: originalPost.id,
                 },
+              });
+              events.emit("notification", {
+                recipientId: originalPost.authorId,
               });
             } catch (error) {
               console.error("Background repost notification error:", error);
@@ -1018,6 +1025,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                 commentId: comment.id,
               },
             });
+            events.emit("notification", { recipientId: comment.post.authorId });
           }
 
           if (comment.parent && comment.parent.userId !== currentUserId) {
@@ -1030,6 +1038,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                 commentId: comment.id,
               },
             });
+            events.emit("notification", { recipientId: comment.parent.userId });
           }
 
           // Parse mentions in comment
@@ -1059,6 +1068,7 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
                   commentId: comment.id,
                 },
               });
+              events.emit("notification", { recipientId: mentionedUser.id });
 
               // Special: @grok
               if (username === "grok") {
