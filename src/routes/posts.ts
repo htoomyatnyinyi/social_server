@@ -443,15 +443,37 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
     };
   })
 
-  .get("/:id/comments", async ({ params: { id } }) => {
+  .get("/:id/comments", async ({ params: { id }, user }) => {
     return await prisma.comment.findMany({
       where: { postId: id, parentId: null },
       include: {
         user: { select: { id: true, name: true, username: true, image: true } },
+        commentLikes: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        commentReposts: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        _count: {
+          select: { commentLikes: true, commentReposts: true, replies: true },
+        },
         replies: {
           include: {
             user: {
               select: { id: true, name: true, username: true, image: true },
+            },
+            commentLikes: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            commentReposts: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            _count: {
+              select: { commentLikes: true, commentReposts: true, replies: true },
             },
           },
         },
@@ -1111,4 +1133,184 @@ export const postRoutes = new Elysia({ prefix: "/posts" })
         parentId: t.Optional(t.String()),
       }),
     },
-  );
+  )
+  .get("/comment/:commentId", async ({ params: { commentId }, user, set }) => {
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      include: {
+        user: { select: { id: true, name: true, username: true, image: true } },
+        post: { 
+          select: { 
+            id: true, 
+            author: { select: { id: true, name: true, username: true, image: true } }
+          } 
+        },
+        parent: {
+          include: {
+            user: { select: { id: true, name: true, username: true, image: true } }
+          }
+        },
+        replies: {
+          include: {
+            user: { select: { id: true, name: true, username: true, image: true } },
+            commentLikes: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            commentReposts: {
+              where: { userId: user ? (user.id as string) : undefined },
+              select: { userId: true },
+            },
+            _count: {
+              select: { commentLikes: true, commentReposts: true, replies: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        commentLikes: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        commentReposts: {
+          where: { userId: user ? (user.id as string) : undefined },
+          select: { userId: true },
+        },
+        _count: {
+          select: { commentLikes: true, commentReposts: true, replies: true },
+        },
+      },
+    });
+
+    if (!comment) {
+      set.status = 404;
+      return { message: "Comment not found" };
+    }
+
+    return comment;
+  })
+  .post("/:id/comment/:commentId/like", async ({ params: { commentId }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+
+    const existingLike = await prisma.commentLike.findUnique({
+      where: {
+        userId_commentId: {
+          userId,
+          commentId,
+        },
+      },
+    });
+
+    if (existingLike) {
+      await prisma.commentLike.delete({
+        where: { id: existingLike.id },
+      });
+      return { message: "Comment unliked" };
+    }
+
+    await prisma.commentLike.create({
+      data: {
+        userId,
+        commentId,
+      },
+    });
+
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { userId: true, postId: true },
+    });
+
+    if (comment && comment.userId !== userId) {
+      await prisma.notification.create({
+        data: {
+          type: "LIKE",
+          recipientId: comment.userId,
+          issuerId: userId,
+          commentId,
+        },
+      });
+      events.emit("notification", { recipientId: comment.userId });
+    }
+
+    return { message: "Comment liked" };
+  })
+  .post("/:id/comment/:commentId/repost", async ({ params: { commentId }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const userId = user.id as string;
+
+    const existingRepost = await prisma.commentRepost.findUnique({
+      where: {
+        userId_commentId: {
+          userId,
+          commentId,
+        },
+      },
+    });
+
+    if (existingRepost) {
+      await prisma.commentRepost.delete({
+        where: { id: existingRepost.id },
+      });
+      return { message: "Comment unreposted" };
+    }
+
+    await prisma.commentRepost.create({
+      data: {
+        userId,
+        commentId,
+      },
+    });
+
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { userId: true },
+    });
+
+    if (comment && comment.userId !== userId) {
+      await prisma.notification.create({
+        data: {
+          type: "REPOST",
+          recipientId: comment.userId,
+          issuerId: userId,
+          commentId,
+        },
+      });
+      events.emit("notification", { recipientId: comment.userId });
+    }
+
+    return { message: "Comment reposted" };
+  })
+  .delete("/:id/comment/:commentId", async ({ params: { commentId }, user, set }) => {
+    if (!user) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment) {
+      set.status = 404;
+      return { message: "Comment not found" };
+    }
+
+    if (comment.userId !== (user.id as string)) {
+      set.status = 403;
+      return { message: "Forbidden" };
+    }
+
+    await prisma.comment.delete({
+      where: { id: commentId },
+    });
+
+    return { message: "Comment deleted" };
+  });
